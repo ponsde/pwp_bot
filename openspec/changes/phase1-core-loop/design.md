@@ -1,117 +1,107 @@
 ## Context
 
-泰迪杯比赛项目，构建财报智能问答助手。Phase 1 是最小核心闭环：问题 → SQL → 答案。
+泰迪杯 B 题，中药上市公司财报"智能问数"助手。示例数据：华润三九（深交所 000999）、金花股份（上交所 600080），39 份财报 PDF，2022-2025 年报/季报/半年报。
 
-项目当前仓库几乎为空，仅有 OpenSpec 变更文档；本 change 需要同时定义首批代码骨架、测试夹具和运行脚本。参考了三个开源项目：
-- chatbot_financial_statement：两步式 Text2SQL、垂直表 Schema
-- FinGLM：PDF 解析方案（pdfplumber / Camelot）
-- OpenViking-examples：OV API 用法（但当前 references 目录下为 git submodule，需要以已安装 SDK 行为为准）
+赛题三个任务：任务一 PDF→DB、任务二 NL2SQL、任务三 RAG。Phase 1 覆盖任务一全部 + 任务二核心。
 
-外部约束：
-- LLM API 走 OpenAI 兼容协议（oai.whidsm.cn/v1, gpt-5.4）
-- Embedding 同源（BAAI/bge-m3）
-- 比赛截止 2026-04-24，Phase 1 需两周内完成
+关键约束：
+- Schema 由官方指定（附件3），4 张表，字段固定
+- report_period 格式："2025Q3"/"2022FY"/"2024HY"/"2023Q1"
+- 4.25 测试给新数据，6 小时内 Pipeline 跑完出结果
+- 输出必须按附件7 JSON 格式 + xlsx
 
 ## Goals / Non-Goals
 
 **Goals:**
-- 用户能对任意 A 股上市公司的财务数据提问，获得准确数值答案
-- 数据覆盖全 A 股（~5000 家），至少 3 年（2021-2023）
-- Text2SQL 准确率在简单数值问题上 > 80%
-- OpenViking 服务部署完成，年报全文可检索
-- 最小 Gradio 界面可交互
+- 华润三九 + 金花股份全部 PDF 自动解析入库，4 张表数据完整
+- 数据校验通过（勾稽关系、跨表一致性）
+- 附件4 的 2 个示例问题能正确回答
+- `python pipeline.py --task etl` 一键入库
+- 输出符合附件7 格式的 result_2.xlsx + 图表图片
 
 **Non-Goals:**
-- 分析型 / 语义类问题（Phase 2 RAG）
-- OV 记忆系统（Session commit / 上下文增强 / 联想推荐 → Phase 2）
-- 意图分类路由（Phase 2，Phase 1 全走 Text2SQL）
-- 多轮对话（Phase 1 每次独立问答）
-- UI 美化（Phase 3）
+- 研报 RAG / 归因分析（Phase 3，任务三）
+- OpenViking 记忆系统（Phase 3，P2 创新点）
+- 多意图拆解（Phase 3）
+- UI 美化（Phase 4）
 
 ## Decisions
 
-### 1. 结构化数据来源：AKShare API，不从 PDF 抠数字
+### 1. PDF 表格提取：规则 + LLM 混合
 
-**选择**：AKShare 批量拉取三张财务报表，写入 SQLite
-
-**替代方案**：
-- 从 PDF 表格中提取数字：准确率低、清洗复杂、Phase 1 时间不够
-- BaoStock：字段有限（只有汇总比率），不如 AKShare 的完整三表 + 中文列名
-- IEEE China-FSD 数据集：覆盖到 2022 年，缺 2023 年
-
-**理由**：AKShare 直接给干净的 DataFrame，中文列名天然匹配用户问法（"营业收入" 对应列名就是 "营业收入"），省掉 70% ETL 工作。PDF 解析仅用于提取全文文本给 OV Resource。
-
-**实测验证**（2026-03-22）：
-- `ak.stock_financial_report_sina(stock, symbol)` 返回多报告期行 x 多指标列的 DataFrame
-- `报告日` 是字符串格式如 "20231231"，需过滤年报行
-- 利润表 83 列、资产负债表 147 列、现金流量表 71 列，全部中文列名
-- 同时存在元数据列：`报告日`、`公告日期`、`币种`、`类型` — 需在 loader 中显式过滤，不能落入 item_name
-- `ak.stock_info_a_code_name()` 只返回 code + name，无 industry 字段
-- Phase 1 先做 50-100 家核心公司，全量 5000 家需要考虑 Sina API 限流
-
-**ETL 设计要点**：
-- `statement_type`：利润表 / 资产负债表 / 现金流量表（系统内部枚举，由调用参数决定）
-- `report_date`：AKShare 返回的报告日（如 "20231231"）
-- AKShare 的"类型"列（如"合并期末"）作为元数据列过滤掉，不进入 financial_data
-
-### 2. SQLite Schema：垂直表设计 + 中文列名
-
-**选择**：单表 `financial_data`，每行一个指标值（stock_code, report_date, statement_type, item_name, value）。report_date 保留 AKShare 原始格式（如 "20231231"），statement_type 使用中文（"利润表"/"资产负债表"/"现金流量表"）。companies 表 Phase 1 不含 industry 字段。
+**选择**：pdfplumber 规则提取表格结构 → LLM 辅助模糊匹配字段名
 
 **替代方案**：
-- 水平表（每列一个指标）：指标数量不固定，不同公司不同年份的项目可能不同
-- 按公司类型分表（bank / non_bank）：中国 A 股不需要这么细分
+- 纯规则映射：年报格式变化大，规则维护成本高
+- 纯 LLM 提取：成本高、可能幻觉、可靠性差
+- Camelot：对扫描件支持差
 
-**理由**：垂直表灵活度高，新增指标不需要改表结构。参考 chatbot_financial_statement 的验证结论。
+**理由**：pdfplumber 擅长提取有线框的表格（年报表格通常有），得到表头 + 数值后，用中文名映射字典（覆盖 90% 常见写法）+ LLM 兜底（处理别名和特殊格式）。
 
-**实现约束**：唯一约束 UNIQUE(stock_code, report_date, statement_type, item_name)，配合 INSERT OR IGNORE 实现幂等导入。
+### 2. 上交所 / 深交所 双格式处理
 
-### 3. Text2SQL：两步式，别名映射替代向量搜索
+**选择**：根据目录名或文件名模式自动判断交易所，分别解析
 
-**选择**：
-- Step1: LLM 提取意图（公司/指标/年份）→ 别名映射表查 item_name
-- Step2: LLM 生成 SQL（输入：用户问题 + 表结构 snapshot + Step1 映射结果）
+**深交所**：`华润三九：2023年年度报告.pdf` → 文件名直接解析出公司名+年份+报告类型
+**上交所**：`600080_20230428_FQ2V.pdf` → stock_code 从文件名取，report_period 从 PDF 内容首页推断或从日期推断（4月底发布 → 年报）
 
-**替代方案**：
-- 一步式（直接生成 SQL）：幻觉多，没有 schema 引导容易出错
-- 向量搜索匹配指标名（chatbot_financial_statement 方案）：引入 ChromaDB 依赖，Phase 1 过重
+**日期推断规则**：
+- 3-4 月发布 → 上年年报 FY
+- 4-5 月发布 → 一季报 Q1
+- 7-8 月发布 → 半年报 HY
+- 10-11 月发布 → 三季报 Q3
 
-**理由**：两步式在参考项目中已验证有效。别名映射表 + SQL LIKE 足以覆盖 Phase 1 需求（"营收" → "营业收入"），Phase 2 可切换到 OV find 做语义匹配。
+### 3. 数据库：SQLite，Schema 对齐官方
 
-**实现约束**：Step1 应允许输出空列表；查询引擎需在公司未匹配、指标未匹配、年份缺失、SQL 返回空结果时给出可预期错误分支，而不是统一依赖 SQL 重试。
+**选择**：SQLite，表名和字段完全对齐附件3（core_performance_indicators_sheet, balance_sheet, income_sheet, cash_flow_sheet）
 
-### 4. LLM 客户端：OpenAI SDK，同一 endpoint 同时提供 chat 和 embedding
+**替代方案**：MySQL（赛题附件3 提到 MySQL 字段类型）
 
-**选择**：用 openai Python SDK，base_url 指向 oai.whidsm.cn/v1
+**理由**：SQLite 零配置、轻量。SQL 语法与 MySQL 高度兼容，表结构完全一致。如果评审要求 MySQL，切换只需改连接层。
 
-**理由**：API 兼容 OpenAI 协议，SDK 成熟稳定。chat 用 gpt-5.4，embedding 用 BAAI/bge-m3，同一 endpoint。
+### 4. 字段映射策略
 
-### 5. OpenViking：Embedded 模式，Phase 1 只做 Resource 导入
+**选择**：维护一份中文→英文字段映射字典 + 单位换算规则
 
-**选择**：本地 embedded 模式（不开 HTTP server），用 `ov.OpenViking(path=...)` 或 `SyncOpenViking` 客户端
+示例映射：
+```
+"营业收入" / "一、营业总收入" → total_operating_revenue（需除以10000转万元）
+"基本每股收益" → eps
+"归属于母公司所有者的净利润" → net_profit（需除以10000转万元）
+```
 
-**替代方案**：HTTP server 模式：多一层网络开销，单机场景无必要
+**单位处理**：PDF 中常见单位为"元"，官方 Schema 要求"万元"→ 自动转换 ÷ 10000
 
-**理由**：比赛是单机环境，embedded 模式最简单。Phase 1 只验证 Resource 导入和 find 检索，不涉及 Session/Memory。注意 `add_resource(path=...)` 接受文件路径（非内存文本），可以直接传 PDF 让 OV 自行解析。
+### 5. NL2SQL：两步式，Schema 固定简化
 
-**实现校验**：`openviking==0.2.9` 的 `add_resource(path, to=None, ...)` 和 `find(query, target_uri='', limit=10, ...)` 是实际可用的 API。实现应基于"传文件路径导入"模式。
+**选择**：Schema 只有 4 张表，LLM 上下文可以放完整 Schema
 
-### 6. PDF 解析：pdfplumber 纯文本提取
+- Step1: LLM 解析意图 → 选表/字段/公司/期间 → JSON
+- Step2: LLM 生成 SQL（输入：完整 Schema + Step1 结果 + 示例）
 
-**选择**：pdfplumber 逐页提取文本，不做表格结构化
+**与通用 Text2SQL 的区别**：表少（4 张）、字段固定、可以把完整 Schema 放进 prompt，不需要向量搜索匹配字段。
 
-**替代方案**：
-- Camelot + pdfplumber 双保险（馒头科技方案）：Phase 1 不需要结构化表格
-- 南哪都队重度后处理：过于复杂
+### 6. 多轮对话：上下文拼接
 
-**理由**：PDF 在 Phase 1 只用于灌入 OV Resource 做语义检索基础。全文文本提取足矣。
+**选择**：维护会话历史，每次新问题拼接上下文后送 LLM
+
+示例：
+```
+用户问: "金花股份利润总额是多少"  → LLM 发现缺 report_period → 澄清
+用户追问: "2025年第三季度的"     → 拼接上下文 → 生成 SQL
+```
+
+### 7. 图表生成：matplotlib + LLM 选型
+
+**选择**：LLM 判断是否需要图表及类型 → matplotlib 生成 → 保存到 result/
+
+支持类型：折线图（趋势）、柱状图（对比）、饼图（占比）、表格（明细）
 
 ## Risks / Trade-offs
 
-- **AKShare API 不稳定或被限流** → 缓解：数据拉取后本地缓存为 CSV，只拉一次；Phase 1 先做 50-100 家
-- **AKShare 数据字段与用户问法不完全匹配** → 缓解：item_mapping 别名表兜底
-- **AKShare 元数据列混入 item_name** → 缓解：loader 显式维护元数据列白名单，过滤 报告日/公告日期/币种/类型/数据源/更新日期
-- **gpt-5.4 生成 SQL 质量不稳定** → 缓解：SQL 执行失败时自动重试（最多 2 次），错误信息反馈给 LLM
-- **全 A 股数据量大，首次拉取耗时长** → 缓解：支持增量拉取、断点续传
-- **OpenViking embedding 配置与 LLM endpoint 不同** → 缓解：OV 的 embedding 单独配置
-- **references 目录为 submodule** → 缓解：实现阶段优先依赖已安装 SDK 行为，避免依据缺失示例误判 API
+- **PDF 表格格式多变** → 缓解：先用示例 2 家公司调通，4.11 正式数据后再适配
+- **中文字段名别名多** → 缓解：维护映射字典 + LLM 兜底
+- **上交所 PDF 报告类型识别** → 缓解：发布日期推断 + PDF 首页标题解析
+- **勾稽关系校验不通过** → 缓解：记录差异但不阻塞入库，标记为待人工确认
+- **LLM 生成 SQL 质量** → 缓解：Schema 小且固定，few-shot 覆盖；执行失败重试 2 次
+- **6 小时新数据测试** → 缓解：Pipeline 全自动化，提前用不同格式 PDF 压测

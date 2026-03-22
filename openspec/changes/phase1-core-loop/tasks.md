@@ -1,68 +1,86 @@
 ## 1. 项目基础设施
 
-- [ ] 1.1 创建项目目录结构（src/etl, src/query, src/llm, src/viking, src/prompts, data/raw, data/db, data/processed, tests）
-- [ ] 1.2 创建 requirements.txt（akshare, pdfplumber, openai, gradio, openviking, python-dotenv, pandas）
-- [ ] 1.3 实现 config.py：从 .env 读取 LLM/Embedding API 配置 + OV 配置（embedding endpoint/model/dimension），暴露项目路径，缺少必需变量时 fail fast
-- [ ] 1.4 创建 .env.example 文档化所有必需环境变量（含 OV embedding 相关）
-- [ ] 1.5 补充 README 或运行脚本，说明如何初始化数据库、执行 ETL、启动 Gradio、导入 OV Resource
+- [ ] 1.1 创建项目目录结构（src/etl, src/query, src/knowledge, src/llm, src/viking, src/prompts, data/, result/, tests/）
+- [ ] 1.2 创建 requirements.txt（pdfplumber, openai, gradio, matplotlib, pandas, openpyxl, python-dotenv, faiss-cpu）
+- [ ] 1.3 实现 config.py：从 .env 读取 LLM API 配置，暴露项目路径，fail fast
+- [ ] 1.4 创建 .env.example
 
 ## 2. LLM 客户端
 
-- [ ] 2.1 实现 src/llm/client.py：chat_completion 函数（messages → str），支持 temperature 和 JSON mode（含 fallback：JSON mode 不可用时用正则提取）
-- [ ] 2.2 实现 embedding 函数（texts → list[list[float]]），调用 BAAI/bge-m3
-- [ ] 2.3 实现重试逻辑：429/5xx/timeout 自动重试 3 次，指数退避
-- [ ] 2.4 编写 LLM client 冒烟测试（真实 API 调用验证连通性，环境变量开关控制）
-- [ ] 2.5 编写离线单元测试：mock OpenAI SDK，覆盖 JSON mode、重试成功、重试耗尽
+- [ ] 2.1 实现 src/llm/client.py：chat_completion（支持 temperature、JSON mode + regex fallback）
+- [ ] 2.2 实现重试逻辑：429/5xx/timeout 自动重试 3 次，指数退避
+- [ ] 2.3 冒烟测试：验证 API 连通性
 
-## 3. ETL 数据管线
+## 3. 官方 Schema + 公司信息
 
-- [ ] 3.1 实现 src/etl/api_fetcher.py：用 ak.stock_info_a_code_name() 获取 A 股股票列表（code, name 两列），写入 companies 表
-- [ ] 3.2 实现获取单只股票三张财务报表（ak.stock_financial_report_sina），本地缓存为 CSV。注意：返回格式是多报告期行 x 多指标列，报告日为字符串如 "20231231"
-- [ ] 3.3 实现批量拉取：指定股票代码子集（Phase 1 先做 50-100 家），显示进度，单个失败不中断，请求间添加 sleep 避免限流，支持断点续传（跳过已缓存）
-- [ ] 3.4 实现 src/etl/schema.py：创建 SQLite 三表 — companies(stock_code, company_name)、financial_data(stock_code, report_date, statement_type, item_name, value) + UNIQUE(stock_code, report_date, statement_type, item_name)、item_mapping(item_name, alias, statement_type) + 索引
-- [ ] 3.5 实现 src/etl/loader.py：逐行（报告期）逐列（指标）展开 DataFrame → 插入 financial_data，跳过 NaN，INSERT OR IGNORE 幂等。支持过滤仅年报（report_date 以 "1231" 结尾）
-- [ ] 3.6 定义元数据列过滤规则：报告日、公告日期、币种、类型、数据源、更新日期 等不落入 item_name
-- [ ] 3.7 构建 item_mapping 初始数据：从 AKShare 列名提取规范名，手动添加常用别名（营收→营业收入，净利→净利润 等）
-- [ ] 3.8 编写 ETL 集成测试：拉取茅台数据 → 入库 → 验证 SQL 查询返回正确值
-- [ ] 3.9 编写断点续传/缓存复用测试
+- [ ] 3.1 实现 src/etl/schema.py：按附件3 创建 4 张 SQLite 表（core_performance_indicators_sheet, balance_sheet, income_sheet, cash_flow_sheet），字段名/类型完全对齐
+- [ ] 3.2 实现公司信息加载：读取附件1 xlsx，建立 stock_code ↔ stock_abbr 映射
+- [ ] 3.3 验证：建表后检查字段与附件3 一致
 
-## 4. PDF 解析
+## 4. PDF 解析（任务一核心 P0）
 
-- [ ] 4.1 实现 src/etl/pdf_parser.py：pdfplumber 逐页提取文本，返回 list[str]，处理空页（作为 OV 导入的 fallback 方案）
-- [ ] 4.2 实现批量处理：扫描 data/raw/ 目录，输出 .txt 文件到 data/processed/
-- [ ] 4.3 准备 3 份练手 PDF（茅台、比亚迪、平安银行）到 data/raw/，提供下载脚本
-- [ ] 4.4 编写 PDF 解析测试：验证年报可正常解析出文本，覆盖空页/图片页场景
+- [ ] 4.1 实现 src/etl/pdf_parser.py：pdfplumber 提取 PDF 中的表格，返回 list of DataFrame
+- [ ] 4.2 实现深交所文件名解析：从 "华润三九：2023年年度报告.pdf" 提取 stock_abbr + report_period + report_year
+- [ ] 4.3 实现上交所文件名解析：从 "600080_20230428_FQ2V.pdf" 提取 stock_code + 从发布日期推断 report_period
+- [ ] 4.4 实现跨页表格合并：处理合并单元格、跨页表格拼接
+- [ ] 4.5 测试：华润三九 2023 年报 PDF 能提取出资产负债表、利润表、现金流量表
 
-## 5. Prompt 模板
+## 5. 表格字段映射
 
-- [ ] 5.1 实现 src/prompts/loader.py：加载 .md 模板文件，支持 {variable} 占位符替换
-- [ ] 5.2 编写 src/prompts/seek_database.md：指导 LLM 从用户问题中提取 companies/accounts/years 的 JSON，含示例
-- [ ] 5.3 编写 src/prompts/generate_sql.md：提供 schema + 映射结果 + 示例数据，指导 LLM 生成 SQL（用 ```sql``` 包裹）
-- [ ] 5.4 编写 src/prompts/answer.md：指导 LLM 从 SQL 结果生成自然语言回答，格式化大数字为万元/亿元
-- [ ] 5.5 编写 prompt 渲染测试：确保模板加载和变量替换正常工作
+- [ ] 5.1 实现 src/etl/table_extractor.py：中文指标名 → 官方英文字段名映射字典
+- [ ] 5.2 覆盖 4 张表的所有字段别名（从示例 PDF 中收集实际出现的中文名）
+- [ ] 5.3 实现单位换算：元→万元（÷10000），百分比处理，每股指标保持元
+- [ ] 5.4 实现 LLM fallback：映射字典未命中时调用 LLM 推荐字段
+- [ ] 5.5 实现表类型识别：从表格标题判断属于哪张官方表（资产负债表/利润表/现金流量表/业绩指标）
+- [ ] 5.6 测试：华润三九年报的利润表所有字段能正确映射到 income_sheet 的字段
 
-## 6. Text2SQL 查询引擎
+## 6. 数据校验
 
-- [ ] 6.1 实现 src/query/text2sql.py Step1：调用 seek_database prompt → 解析 JSON（含 fallback 正则提取）→ 查 companies 表模糊匹配 stock_code → 查 item_mapping 匹配 item_name
-- [ ] 6.2 实现 Step2：拼装 schema snapshot（CREATE TABLE 语句 + 映射结果 + 示例数据行）→ 调用 generate_sql prompt → 从 ```sql``` 代码块提取 SQL
-- [ ] 6.3 实现 SQL 执行 + 失败重试：执行 SQL，失败时将错误反馈给 LLM 重新生成（最多 2 次）
-- [ ] 6.4 实现答案生成：SQL 结果 + 用户问题 → 调用 answer prompt → 返回自然语言回答
-- [ ] 6.5 实现用户友好失败分支：公司未匹配、指标未匹配、年份缺失、SQL 空结果分别返回明确提示
-- [ ] 6.6 编写端到端测试："贵州茅台2023年营业收入是多少？" → 正确数值答案
-- [ ] 6.7 编写边界测试："茅台营收"（简称+别名）、比较类问题、空结果场景
+- [ ] 6.1 实现 src/etl/validator.py：勾稽关系校验（资产=负债+权益，营业利润勾稽）
+- [ ] 6.2 实现跨表一致性校验（income_sheet.净利润 ≈ core_performance.净利润）
+- [ ] 6.3 实现格式校验（report_period 格式、数值非负）
+- [ ] 6.4 校验不通过时记录警告但不阻塞入库
 
-## 7. OpenViking Resource
+## 7. 数据入库
 
-- [ ] 7.1 创建 ov.conf：embedded 模式，配置 embedding（provider: "openai", model: "BAAI/bge-m3", api_base, api_key, dimension: 1024）和数据路径
-- [ ] 7.2 实现 src/viking/client.py：OV 客户端初始化封装（ov.OpenViking + initialize）
-- [ ] 7.3 实现 src/viking/resource.py：优先直接用 add_resource(path=<pdf_path>) 让 OV 解析 PDF；如果失败则 fallback 到导入 pdfplumber 提取的 .txt 文件
-- [ ] 7.4 验证 OV find 检索：导入茅台年报后，find("贵州茅台发展战略", limit=3) 返回 .resources 列表
-- [ ] 7.5 编写 OV 最小验证脚本，覆盖 add_resource / find 的真实 SDK 调用方式
+- [ ] 7.1 实现 src/etl/loader.py：INSERT OR REPLACE by (stock_code, report_period)
+- [ ] 7.2 集成测试：华润三九 + 金花股份全部 PDF → 解析 → 映射 → 校验 → 入库 → SQL 查询验证
 
-## 8. Gradio 界面
+## 8. Prompt 模板
 
-- [ ] 8.1 实现 app.py：Gradio Chat 界面，输入框 + 聊天历史
-- [ ] 8.2 接入 Text2SQL 管线：用户提问 → text2sql 处理 → 显示答案
-- [ ] 8.3 添加 SQL 展示区：可折叠面板显示生成的 SQL 查询
-- [ ] 8.4 错误处理：查询失败时显示友好提示而非 traceback
-- [ ] 8.5 编写最小 UI 冒烟测试或手动验收脚本
+- [ ] 8.1 实现 src/prompts/loader.py：加载 .md 模板，{variable} 替换
+- [ ] 8.2 编写 src/prompts/seek_table.md：从问题提取 tables/fields/companies/periods 的 JSON
+- [ ] 8.3 编写 src/prompts/generate_sql.md：完整 Schema + 映射结果 → SQL（```sql``` 包裹）
+- [ ] 8.4 编写 src/prompts/answer.md：SQL 结果 → 自然语言回答 + 数字格式化
+- [ ] 8.5 编写 src/prompts/clarify.md：检测缺失信息 → 生成澄清问题
+- [ ] 8.6 编写 src/prompts/chart_select.md：判断是否需要图表 + 图表类型
+
+## 9. Text2SQL 查询引擎
+
+- [ ] 9.1 实现 src/query/text2sql.py Step1：调用 seek_table prompt → 解析 JSON → 验证公司/字段存在
+- [ ] 9.2 实现 Step2：拼完整 Schema + Step1 结果 → 调用 generate_sql prompt → 提取 SQL
+- [ ] 9.3 实现 SQL 执行 + 失败重试（最多 2 次）
+- [ ] 9.4 实现用户友好失败分支：公司未找到、字段未识别、期间缺失、空结果
+
+## 10. 多轮对话
+
+- [ ] 10.1 实现 src/query/conversation.py：维护会话历史，追问时拼接上下文
+- [ ] 10.2 实现意图澄清：检测缺失关键信息 → 返回澄清问题而非猜测
+
+## 11. 图表生成
+
+- [ ] 11.1 实现 src/query/chart.py：matplotlib 折线图/柱状图/饼图
+- [ ] 11.2 实现图表类型自动选择（LLM 或规则：趋势→折线，对比→柱状，占比→饼）
+- [ ] 11.3 图表保存到 result/{编号}_{序号}.jpg
+
+## 12. 回答格式化
+
+- [ ] 12.1 实现 src/query/answer.py：LLM 生成分析结论文本 + 数字格式化（万元/亿元）
+- [ ] 12.2 实现 JSON 输出格式：[{Q, A: {content, image}}] 按附件7
+- [ ] 12.3 实现 result_2.xlsx 生成：编号/问题/SQL/图形格式/回答
+
+## 13. Pipeline + Gradio
+
+- [ ] 13.1 实现 pipeline.py：`--task etl` 一键 PDF→DB，`--task answer` 一键答题→xlsx
+- [ ] 13.2 实现 app.py：Gradio Chat 界面 + SQL 展示 + 图表展示
+- [ ] 13.3 端到端测试：附件4 的 B1001 + B1002 能正确回答，输出 result_2.xlsx

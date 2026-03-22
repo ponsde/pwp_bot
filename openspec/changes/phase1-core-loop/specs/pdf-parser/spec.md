@@ -1,19 +1,28 @@
 ## ADDED Requirements
 
-### Requirement: Extract full text from PDF
-The system SHALL extract all text content from a PDF file page by page using pdfplumber. The system SHALL preserve page boundaries in the output.
+### Requirement: Extract tables from financial report PDFs
+The system SHALL use pdfplumber to extract tabular data from financial report PDFs. The system SHALL handle both formats: 深交所 (Chinese filename with company name and report period) and 上交所 (stock_code_date_random.pdf).
 
-#### Scenario: Parse a standard annual report PDF
-- **WHEN** parsing a 143-page Moutai annual report PDF
-- **THEN** the system returns a list of text strings, one per page, with readable content
+#### Scenario: Parse 深交所 annual report
+- **WHEN** parsing "华润三九：2023年年度报告.pdf"
+- **THEN** the system extracts balance sheet, income statement, cash flow statement, and core performance indicator tables
+- **AND** returns structured data with Chinese column headers and numeric values
 
-#### Scenario: Handle empty or image-only pages
-- **WHEN** a page contains no extractable text
-- **THEN** the system returns an empty string for that page without errors
+#### Scenario: Parse 上交所 report
+- **WHEN** parsing "600080_20230428_FQ2V.pdf"
+- **THEN** the system identifies the stock_code as "600080" and infers the report period from the publish date or PDF title page
 
-### Requirement: Batch PDF processing
-The system SHALL support processing a directory of PDF files. The output SHALL be structured as one text file per PDF (or one JSON with metadata).
+#### Scenario: Handle merged cells and multi-page tables
+- **WHEN** a table spans multiple pages or has merged header cells
+- **THEN** the system reconstructs the complete table with correct column alignment
 
-#### Scenario: Process directory of PDFs
-- **WHEN** pointing the parser at `data/raw/` containing 3 PDF files
-- **THEN** the system produces 3 corresponding text outputs in `data/processed/`
+### Requirement: Identify report metadata
+The system SHALL extract report metadata: stock_code, stock_abbr (company short name), report_period (e.g. "2023FY", "2025Q3"), report_year from either the filename or PDF content.
+
+#### Scenario: 深交所 filename parsing
+- **WHEN** the filename is "华润三九：2023年年度报告.pdf"
+- **THEN** metadata is {stock_abbr: "华润三九", report_period: "2023FY", report_year: 2023}
+
+#### Scenario: 上交所 date-based inference
+- **WHEN** the filename is "600080_20230428_FQ2V.pdf" (April publish date)
+- **THEN** metadata infers report_period as "2022FY" (annual report published in April)

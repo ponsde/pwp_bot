@@ -1,28 +1,38 @@
 ## Why
 
-泰迪杯比赛（截止 2026-04-24）要求构建财报智能问答助手。Phase 1 的目标是打通核心闭环：用户提问 → 系统从结构化财务数据中查询 → 返回准确答案。这是整个系统的基础，后续的 RAG、OV 记忆、联想推荐都建立在这个闭环之上。现在开始是因为只剩 33 天，Phase 1 需要在两周内完成。
+泰迪杯 B 题要求从财报 PDF 中自动提取结构化数据入库（任务一），再基于数据库做 NL2SQL 智能问答（任务二）。任务一是整个系统的地基 —— 数据不准，后面全崩。4.25 还有 6 小时新数据测试，Pipeline 必须全自动化。Phase 1 聚焦任务一（ETL）+ 任务二的 NL2SQL 核心，先让系统能"解析-入库-答题"。
 
 ## What Changes
 
-- 新建项目基础设施：配置管理、LLM 客户端封装
-- 构建 ETL 数据管线：通过 AKShare API 批量拉取 A 股上市公司财务数据，清洗后入库 SQLite
-- 构建 PDF 解析管线：用 pdfplumber 提取年报全文文本，导入 OpenViking Resource（为 Phase 2 RAG 做准备）
-- 实现两步式 Text2SQL 查询引擎：Step1 意图提取（公司/指标/年份）→ Step2 生成 SQL → 执行 → 回答
-- 搭建基础 Gradio 对话界面
-- 部署 OpenViking（embedded 模式），验证 Resource 导入和 find 检索
+- 实现 PDF 财报自动解析：pdfplumber 提取表格，支持上交所/深交所两种命名格式
+- 按官方 Schema（附件3）建库：4 张固定表（core_performance_indicators_sheet, balance_sheet, income_sheet, cash_flow_sheet）
+- 表格字段映射：PDF 中文指标名 → 官方英文字段名
+- 数据一致性校验：勾稽关系、跨表一致性、格式校验
+- LLM 客户端封装：gpt-5.4 via OpenAI 兼容协议
+- 两步式 NL2SQL：意图解析 → SQL 生成 → 执行 → 回答
+- 多轮对话管理：处理追问式查询
+- 可视化图表生成：matplotlib 折线图/柱状图/饼图
+- 输出格式化：按附件7 格式生成 result_2.xlsx
+- 基础 Gradio 界面
+- 全自动 Pipeline 入口（pipeline.py）
 
 ## Capabilities
 
 ### New Capabilities
 
-- `config`: 项目配置管理（API endpoint、模型名、数据库路径，从环境变量读取密钥）
-- `llm-client`: LLM API 客户端封装（兼容 OpenAI 协议，支持 chat completion 和 embedding）
-- `etl-pipeline`: ETL 数据管线（AKShare 拉取财务三表 → 清洗标准化 → SQLite 垂直表入库）
-- `pdf-parser`: PDF 年报解析（pdfplumber 提取全文文本，不抠表格数字）
-- `text2sql`: 两步式 Text2SQL 查询引擎（意图提取 → SQL 生成 → 执行 → 失败重试）
-- `prompt-templates`: Prompt 模板管理（seek_database、generate_sql、answer 三个核心模板）
-- `ov-resource`: OpenViking Resource 管理（部署配置、年报全文导入、find 检索验证）
-- `gradio-app`: Gradio 对话界面（最小可用：输入问题 → 显示回答）
+- `config`: 项目配置管理（API 密钥从环境变量读取，项目路径）
+- `llm-client`: LLM API 客户端封装（chat completion + embedding + 重试）
+- `pdf-parser`: PDF 财报解析（pdfplumber 表格提取，上交所/深交所两种格式）
+- `table-extractor`: 表格字段映射（PDF 中文指标 → 官方 Schema 英文字段 + 单位换算）
+- `schema`: 官方 Schema 建库（4 张表，字段类型对齐附件3）
+- `validator`: 数据一致性校验（勾稽关系、跨表、格式）
+- `loader`: 数据入库（校验通过后写入 SQLite）
+- `text2sql`: 两步式 NL2SQL（意图解析 + SQL 生成 + 执行重试）
+- `conversation`: 多轮对话管理（上下文保持、意图澄清）
+- `chart`: 可视化图表生成（折线图/柱状图/饼图，存 result/ 目录）
+- `answer-formatter`: 回答格式化输出（附件7 JSON 格式 + result_2.xlsx）
+- `pipeline`: 全自动 Pipeline 入口（一键 ETL + 答题）
+- `gradio-app`: Gradio 对话界面
 
 ### Modified Capabilities
 
@@ -30,7 +40,7 @@
 
 ## Impact
 
-- **新增文件**：~15 个 Python 文件 + 4 个 Prompt 模板 + 配置文件
-- **依赖**：akshare, pdfplumber, openai, gradio, openviking
-- **外部服务**：LLM API (oai.whidsm.cn)、Embedding API (同源)
-- **数据**：SQLite 数据库（全 A 股 3 年财务数据，预估几百 MB）、OV 本地存储
+- **新增文件**：~20 个 Python 文件 + 6 个 Prompt 模板 + 配置文件
+- **依赖**：pdfplumber, openai, gradio, matplotlib, pandas, openpyxl, python-dotenv
+- **外部服务**：LLM API (oai.whidsm.cn)
+- **数据**：SQLite 数据库（官方 Schema 4 张表）、result/ 图表图片、result_2.xlsx
