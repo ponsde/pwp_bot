@@ -185,11 +185,13 @@ class Text2SQLEngine:
         if not fields and any(token in text for token in ["变化趋势", "趋势", "走势"]):
             tables.append("income_sheet")
             fields.append("total_profit")
+        is_trend = any(token in text for token in ["变化趋势", "趋势", "走势", "近几年", "历年"])
         return {
             "tables": list(dict.fromkeys(tables)),
             "fields": list(dict.fromkeys(fields)),
             "companies": companies,
             "periods": periods,
+            "is_trend": is_trend,
         }
 
     def _heuristic_sql(self, question: str, intent: dict[str, Any]) -> str:

@@ -45,7 +45,8 @@ class ConversationManager:
             missing.append("公司名称")
         if not intent.get("fields"):
             missing.append("指标名称")
-        if not intent.get("periods"):
+        # periods not required for trend queries (they query multiple periods)
+        if not intent.get("periods") and not intent.get("is_trend"):
             missing.append("报告期")
         return missing
 
