@@ -2,10 +2,10 @@
 
 泰迪杯比赛项目，构建财报智能问答助手。Phase 1 是最小核心闭环：问题 → SQL → 答案。
 
-项目从零开始，无既有代码。参考了三个开源项目：
+项目当前仓库几乎为空，仅有 OpenSpec 变更文档；本 change 需要同时定义首批代码骨架、测试夹具和运行脚本。参考了三个开源项目：
 - chatbot_financial_statement：两步式 Text2SQL、垂直表 Schema
 - FinGLM：PDF 解析方案（pdfplumber / Camelot）
-- OpenViking-examples：OV API 用法
+- OpenViking-examples：OV API 用法（但当前 references 目录下未包含实际示例代码，需要以已安装 SDK 行为为准）
 
 外部约束：
 - LLM API 走 OpenAI 兼容协议（oai.whidsm.cn/v1, gpt-5.4）
@@ -41,9 +41,16 @@
 
 **理由**：AKShare 直接给干净的 DataFrame，中文列名天然匹配用户问法（"营业收入" 对应列名就是 "营业收入"），省掉 70% ETL 工作。PDF 解析仅用于提取全文文本给 OV Resource。
 
+**实现校验补充**：实测 `ak.stock_financial_report_sina(stock="sh600519", symbol="利润表")` 可返回 pandas DataFrame，列名为中文；同时存在 `报告日`、`公告日期`、`币种`、`类型` 等字段。因此 ETL 设计应显式区分：
+- `statement_type`：利润表 / 资产负债表 / 现金流量表（系统内部枚举）
+- `report_date`：AKShare 返回的报告日
+- `report_type`：AKShare 返回的“类型”（如 `合并期末`）
+- `announcement_date`：AKShare 返回的公告日期
+不要把 AKShare 的“类型”字段与 `statement_type` 混用。
+
 ### 2. SQLite Schema：垂直表设计 + 中文列名
 
-**选择**：单表 `financial_data`，每行一个指标值（stock_code, year, statement_type, item_name, value）
+**选择**：单表 `financial_data`，每行一个指标值（stock_code, report_date, year, report_type, statement_type, item_name, value, unit, announcement_date）
 
 **替代方案**：
 - 水平表（每列一个指标）：指标数量不固定，不同公司不同年份的项目可能不同
@@ -51,10 +58,12 @@
 
 **理由**：垂直表灵活度高，新增指标不需要改表结构。参考 chatbot_financial_statement 的验证结论。
 
+**实现约束补充**：需要唯一键或幂等约束覆盖 `stock_code + report_date + report_type + statement_type + item_name`，否则无法可靠实现重复导入跳过。
+
 ### 3. Text2SQL：两步式，别名映射替代向量搜索
 
 **选择**：
-- Step1: LLM 提取意图（公司名、指标名、年份）→ 别名映射表查 item_name
+- Step1: LLM 提取意图（公司/指标/年份）→ 别名映射表查 item_name
 - Step2: LLM 生成 SQL（输入：用户问题 + 表结构 snapshot + Step1 映射结果）
 
 **替代方案**：
@@ -62,6 +71,8 @@
 - 向量搜索匹配指标名（chatbot_financial_statement 方案）：引入 ChromaDB 依赖，Phase 1 过重
 
 **理由**：两步式在参考项目中已验证有效。别名映射表 + SQL LIKE 足以覆盖 Phase 1 需求（"营收" → "营业收入"），Phase 2 可切换到 OV find 做语义匹配。
+
+**实现约束补充**：Step1 不应只输出公司名、指标名、年份，还应允许输出空列表；查询引擎需在公司未匹配、指标未匹配、年份缺失、SQL 返回空结果时给出可预期错误分支，而不是统一依赖 SQL 重试。
 
 ### 4. LLM 客户端：OpenAI SDK，同一 endpoint 同时提供 chat 和 embedding
 
@@ -71,11 +82,13 @@
 
 ### 5. OpenViking：Embedded 模式，Phase 1 只做 Resource 导入
 
-**选择**：本地 embedded 模式（不开 HTTP server），用 SyncOpenViking 客户端
+**选择**：本地 embedded 模式，用 SyncOpenViking 客户端
 
 **替代方案**：HTTP server 模式：多一层网络开销，单机场景无必要
 
 **理由**：比赛是单机环境，embedded 模式最简单。Phase 1 只验证 Resource 导入和 find 检索，不涉及 Session/Memory。
+
+**实现校验补充**：实测 `openviking==0.2.9` 暴露 `SyncOpenViking(**kwargs)`，`add_resource(self, path, to=None, parent=None, ..., wait=False, build_index=True, ...)` 与 `find(self, query, target_uri='', limit=10, ...)`。当前 SDK 不存在文档中假设的 `Resource` 类型构造入口，因此实现应基于“把本地文件路径导入为资源”的模式，而不是内存对象导入。
 
 ### 6. PDF 解析：pdfplumber 纯文本提取
 
@@ -94,3 +107,4 @@
 - **gpt-5.4 生成 SQL 质量不稳定** → 缓解：SQL 执行失败时自动重试（最多 2 次），错误信息反馈给 LLM
 - **全 A 股数据量大，首次拉取耗时长** → 缓解：支持增量拉取、断点续传
 - **OpenViking embedding 配置与 LLM endpoint 不同** → 缓解：OV 的 embedding 单独配置，用 siliconflow 或同源 endpoint
+- **当前 references 目录为空壳** → 缓解：实现阶段需优先依赖真实安装包行为、补充本地最小验证脚本，避免依据缺失示例误判 API

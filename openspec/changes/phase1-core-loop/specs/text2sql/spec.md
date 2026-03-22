@@ -39,9 +39,28 @@ The system SHALL execute the generated SQL against SQLite. If execution fails (s
 - **WHEN** SQL fails after 2 retries
 - **THEN** the system returns a user-friendly error message explaining it could not find the answer
 
+### Requirement: User-friendly failure handling before SQL generation
+The system SHALL validate Step 1 resolution results before generating SQL. The system SHALL return explicit user-facing messages for unresolved company names, unresolved account aliases, and missing years in questions that require year-specific answers.
+
+#### Scenario: Company not found
+- **WHEN** the question mentions a company name that does not match the companies table
+- **THEN** the system returns a message indicating the company could not be resolved and does not generate SQL
+
+#### Scenario: Metric not found
+- **WHEN** the question mentions an unsupported financial metric alias
+- **THEN** the system returns a message indicating the metric could not be resolved and does not generate SQL
+
+#### Scenario: Missing year
+- **WHEN** the question asks for a year-specific metric but Step 1 extracts no year
+- **THEN** the system asks the user to clarify the year instead of guessing
+
 ### Requirement: Answer generation from SQL results
 The system SHALL use the LLM to generate a natural language answer from the SQL query results. The answer SHALL include the actual numeric values and appropriate units.
 
 #### Scenario: Numeric answer generation
 - **WHEN** SQL returns value=150560000000 for 营业收入
 - **THEN** the LLM generates an answer like "贵州茅台2023年营业收入为1505.60亿元"
+
+#### Scenario: SQL returns no rows
+- **WHEN** the SQL executes successfully but returns an empty result set
+- **THEN** the system returns a user-friendly message indicating no matching financial data was found
