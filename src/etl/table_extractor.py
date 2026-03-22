@@ -68,9 +68,10 @@ ALIASES = {
         "归属于上市公司股东的净利润": "net_profit_10k_yuan",
         "归属于上市公司股东的扣除非经常性损益的净利润": "net_profit_excl_non_recurring",
         "归属于上市公司股东的每股净资产": "net_asset_per_share",
-        "归属于上市公司股东的净资产": "net_asset_per_share",
+        "每股净资产": "net_asset_per_share",
         "加权平均净资产收益率": "roe",
-        "经营活动产生的现金流量净额": "operating_cf_net_amount",
+        "每股经营现金流量": "operating_cf_per_share",
+        "每股经营活动产生的现金流量净额": "operating_cf_per_share",
         "毛利率": "gross_profit_margin",
         "净利率": "net_profit_margin",
         "扣除非经常性损益后的加权平均净资产收益率": "roe_weighted_excl_non_recurring",
@@ -190,15 +191,16 @@ class TableExtractor:
                 balance["equity_total_equity"] = round(total_assets - total_liabilities, 2)
 
         cash = records["cash_flow_sheet"]
-        net_cash_flow = cash.get("net_cash_flow")
+        net_cash_flow = cash.get("net_cash_flow")  # in 元
         if net_cash_flow not in (None, 0):
             for numerator, ratio_field in [
                 ("operating_cf_net_amount", "operating_cf_ratio_of_net_cf"),
                 ("investing_cf_net_amount", "investing_cf_ratio_of_net_cf"),
                 ("financing_cf_net_amount", "financing_cf_ratio_of_net_cf"),
             ]:
-                numerator_value = cash.get(numerator)
+                numerator_value = cash.get(numerator)  # in 万元
                 if numerator_value is not None:
+                    # Convert numerator from 万元 to 元 to match denominator
                     cash[ratio_field] = round((numerator_value * 10000 / net_cash_flow) * 100, 4)
 
     @staticmethod

@@ -8,17 +8,38 @@ from pathlib import Path
 import openpyxl
 
 from config import REPORTS_DIR
-from src.etl.loader import ETLLoader
-from src.query.answer import build_answer_content, build_answer_record, write_result_xlsx
-from src.query.chart import render_chart, select_chart_type
-from src.query.conversation import ConversationManager
-from src.query.text2sql import Text2SQLEngine
+
+
+def _safe_chart_data(rows: list[dict]) -> list[dict]:
+    """Build chart-friendly data, handling non-numeric first columns (e.g. report_period)."""
+    data = []
+    for row in rows:
+        items = list(row.items())
+        if len(items) >= 2:
+            label = str(items[0][1])
+            value = items[1][1]
+        elif len(items) == 1:
+            label = str(len(data) + 1)
+            value = items[0][1]
+        else:
+            continue
+        try:
+            data.append({"label": label, "value": float(value)})
+        except (ValueError, TypeError):
+            continue
+    return data
 
 
 def run_etl(input_dir: str, db_path: str) -> dict[str, object]:
+    from src.etl.loader import ETLLoader
     loader = ETLLoader(Path(db_path))
     pdf_paths = sorted(Path(input_dir).rglob("*.pdf"))
-    results = [loader.load_pdf(pdf_path) for pdf_path in pdf_paths]
+    results = []
+    for pdf_path in pdf_paths:
+        try:
+            results.append(loader.load_pdf(pdf_path))
+        except Exception as exc:
+            results.append({"status": "error", "file": str(pdf_path), "error": str(exc)})
     return {
         "status": "completed",
         "db_path": db_path,
@@ -49,6 +70,10 @@ def _load_questions_xlsx(path: str) -> list[dict]:
 
 
 def run_answer(questions_path: str, db_path: str, output_xlsx: str) -> str:
+    from src.query.answer import build_answer_content, build_answer_record
+    from src.query.chart import render_chart, select_chart_type
+    from src.query.conversation import ConversationManager
+    from src.query.text2sql import Text2SQLEngine
     engine = Text2SQLEngine(db_path=db_path)
     all_records: list[dict] = []
     all_sql: dict[str, str] = {}
@@ -74,16 +99,14 @@ def run_answer(questions_path: str, db_path: str, output_xlsx: str) -> str:
                 chart_type_str = "none"
                 images = []
             else:
-                chart_type_str = select_chart_type(
-                    question,
-                    [{"label": k, "value": v} for row in result.rows for k, v in row.items()],
-                )
+                chart_data = _safe_chart_data(result.rows)
+                chart_type_str = select_chart_type(question, chart_data)
                 image = render_chart(
                     chart_type_str,
-                    [{"label": str(i + 1), "value": next(iter(row.values()))} for i, row in enumerate(result.rows)],
+                    chart_data,
                     f"result/{question_id}_{len(turn_records) + 1}.jpg",
                     question,
-                )
+                ) if chart_data else None
                 images = [image] if image else []
                 content = build_answer_content(question, result.rows)
                 all_sql[question] = result.sql or ""

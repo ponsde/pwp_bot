@@ -100,7 +100,9 @@ class PDFParser:
         if not m:
             raise ValueError(f"Unrecognized SZSE file name: {path.name}")
         stock_abbr = m.group("abbr")
-        info = self.company_mapping[stock_abbr]
+        info = self.company_mapping.get(stock_abbr)
+        if not info:
+            raise ValueError(f"Unknown company: {stock_abbr} (not in 附件1)")
         period_name = m.group("period")
         year = int(m.group("year"))
         is_summary = "摘要" in period_name
@@ -118,7 +120,9 @@ class PDFParser:
         if not m:
             raise ValueError(f"Unrecognized SSE file name: {path.name}")
         stock_code = m.group("code")
-        info = self.company_mapping[stock_code]
+        info = self.company_mapping.get(stock_code)
+        if not info:
+            raise ValueError(f"Unknown stock_code: {stock_code} (not in 附件1)")
         file_date = m.group("date")
         with pdfplumber.open(path) as pdf:
             first_text = "\n".join((pdf.pages[i].extract_text() or "") for i in range(min(2, len(pdf.pages))))

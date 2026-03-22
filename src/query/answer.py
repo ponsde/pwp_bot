@@ -16,13 +16,23 @@ CHART_TYPE_LABELS = {
 }
 
 
-def format_number(value: Any) -> str:
-    if isinstance(value, (int, float)):
-        abs_value = abs(float(value))
+def format_number(value: Any, unit: str = "万元") -> str:
+    """Format a number with appropriate Chinese unit.
+
+    DB stores most financial values in 万元, EPS/per-share in 元, ratios in %.
+    """
+    if not isinstance(value, (int, float)):
+        return str(value)
+    abs_value = abs(float(value))
+    if unit == "万元":
         if abs_value >= 10000:
             return f"{value / 10000:.2f}亿元"
-        return f"{value:.2f}万元"
-    return str(value)
+        return f"{value:,.2f}万元"
+    if unit == "元":
+        return f"{value:.4f}元"
+    if unit == "%":
+        return f"{value:.2f}%"
+    return f"{value:,.2f}"
 
 
 def build_answer_content(question: str, rows: Sequence[dict]) -> str:
