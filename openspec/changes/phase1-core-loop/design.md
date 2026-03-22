@@ -41,9 +41,16 @@
 
 **理由**：AKShare 直接给干净的 DataFrame，中文列名天然匹配用户问法（"营业收入" 对应列名就是 "营业收入"），省掉 70% ETL 工作。PDF 解析仅用于提取全文文本给 OV Resource。
 
+**实测验证**（2026-03-22）：
+- `ak.stock_financial_report_sina(stock, symbol)` 返回多报告期行 x 多指标列的 DataFrame
+- `报告日` 是字符串格式如 "20231231"，需过滤年报行
+- 利润表 83 列、资产负债表 147 列、现金流量表 71 列，全部中文列名
+- `ak.stock_info_a_code_name()` 只返回 code + name，无 industry 字段
+- Phase 1 先做 50-100 家核心公司，全量 5000 家需要考虑 Sina API 限流
+
 ### 2. SQLite Schema：垂直表设计 + 中文列名
 
-**选择**：单表 `financial_data`，每行一个指标值（stock_code, year, statement_type, item_name, value）
+**选择**：单表 `financial_data`，每行一个指标值（stock_code, report_date, statement_type, item_name, value）。report_date 保留 AKShare 原始格式（如 "20231231"），statement_type 使用中文（"利润表"/"资产负债表"/"现金流量表"）。companies 表 Phase 1 不含 industry 字段。
 
 **替代方案**：
 - 水平表（每列一个指标）：指标数量不固定，不同公司不同年份的项目可能不同
@@ -71,11 +78,11 @@
 
 ### 5. OpenViking：Embedded 模式，Phase 1 只做 Resource 导入
 
-**选择**：本地 embedded 模式（不开 HTTP server），用 SyncOpenViking 客户端
+**选择**：本地 embedded 模式（不开 HTTP server），用 `ov.OpenViking(path=...)` 客户端
 
 **替代方案**：HTTP server 模式：多一层网络开销，单机场景无必要
 
-**理由**：比赛是单机环境，embedded 模式最简单。Phase 1 只验证 Resource 导入和 find 检索，不涉及 Session/Memory。
+**理由**：比赛是单机环境，embedded 模式最简单。Phase 1 只验证 Resource 导入和 find 检索，不涉及 Session/Memory。注意 `add_resource(path=...)` 接受文件路径（非内存文本），可以直接传 PDF 让 OV 自行解析。
 
 ### 6. PDF 解析：pdfplumber 纯文本提取
 
