@@ -13,18 +13,16 @@ BASE_COLUMNS = {"serial_number", "stock_code", "stock_abbr", "report_period", "r
 ALIASES = {
     "income_sheet": {
         "净利润": "net_profit",
-        "四、净利润（净亏损以\"－\"号填列）": "net_profit",
-        "四、净利润（净亏损以“－”号填列）": "net_profit",
         "其他收益": "other_income",
-        "一、营业总收入": "total_operating_revenue",
         "营业总收入": "total_operating_revenue",
+        "营业收入": "total_operating_revenue",
         "营业成本": "operating_expense_cost_of_sales",
         "销售费用": "operating_expense_selling_expenses",
         "管理费用": "operating_expense_administrative_expenses",
         "财务费用": "operating_expense_financial_expenses",
         "研发费用": "operating_expense_rnd_expenses",
         "税金及附加": "operating_expense_taxes_and_surcharges",
-        "二、营业总成本": "total_operating_expenses",
+        "营业总成本": "total_operating_expenses",
         "营业利润": "operating_profit",
         "利润总额": "total_profit",
         "资产减值损失": "asset_impairment_loss",
@@ -144,7 +142,7 @@ class TableExtractor:
                 continue
             label = cells[0]
             value = self._find_first_numeric(cells[1:])
-            field = aliases.get(label)
+            field = aliases.get(label) or aliases.get(self._normalize_label(label))
             if field and value is not None:
                 target[field] = self._convert_value(value, self.meta_by_field[table_type][field], source_unit)
             elif value is not None and label not in aliases and label not in {"项目", "附注", "流动资产：", "负债合计", "所有者权益（或股东权益）"}:
@@ -202,6 +200,15 @@ class TableExtractor:
                 if numerator_value is not None:
                     # Convert numerator from 万元 to 元 to match denominator
                     cash[ratio_field] = round((numerator_value * 10000 / net_cash_flow) * 100, 4)
+
+    @staticmethod
+    def _normalize_label(label: str) -> str:
+        """Strip numbering prefixes like '一、' '二、' '（一）' and parenthetical notes."""
+        text = re.sub(r"^[一二三四五六七八九十]+、", "", label)
+        text = re.sub(r"^（[一二三四五六七八九十\d]+）", "", text)
+        text = re.sub(r"（[^）]*）$", "", text)  # trailing parenthetical
+        text = re.sub(r"\([^)]*\)$", "", text)
+        return text.strip()
 
     @staticmethod
     def _clean_text(value: Any) -> str:

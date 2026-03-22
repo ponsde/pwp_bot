@@ -168,26 +168,74 @@ class PDFParser:
         return None
 
     def _classify_table(self, table: ParsedTable) -> str | None:
-        text = (table.title or "") + "\n" + table.text[:1500]
-        if "合并资产负债表" in text:
+        # Use table's own first few rows to classify, not the whole page text
+        table_header = self._table_first_rows_text(table)
+        # Direct match on table content first
+        if "合并资产负债表" in table_header:
             return "balance_sheet"
-        if "合并利润表" in text or "合并年初到报告期末利润表" in text:
+        if "合并利润表" in table_header or "合并年初到报告期末利润表" in table_header:
             return "income_sheet"
-        if "合并现金流量表" in text or "合并年初到报告期末现金流量表" in text:
+        if "合并现金流量表" in table_header or "合并年初到报告期末现金流量表" in table_header:
             return "cash_flow_sheet"
-        if any(p in text for p in TABLE_TITLE_PATTERNS["core_performance_indicators_sheet"]):
+        if any(p in table_header for p in TABLE_TITLE_PATTERNS["core_performance_indicators_sheet"]):
             return "core_performance_indicators_sheet"
+        # Heuristic: check first non-empty cell content for known patterns
+        first_cells = self._table_first_cells(table)
+        if any(kw in first_cells for kw in ["一、营业总收入", "营业收入", "营业总收入"]):
+            return "income_sheet"
+        if any(kw in first_cells for kw in ["流动资产", "货币资金", "资产总计"]):
+            return "balance_sheet"
+        if any(kw in first_cells for kw in ["经营活动产生的现金", "销售商品、提供劳务收到的现金"]):
+            return "cash_flow_sheet"
+        if any(kw in first_cells for kw in ["基本每股收益", "营业收入", "每股收益"]):
+            return "core_performance_indicators_sheet"
+        # Fallback to page text (less precise, but catches titled tables)
+        page_text = (table.title or "") + "\n" + table.text[:500]
         for table_type, patterns in TABLE_TITLE_PATTERNS.items():
-            if any(p in text for p in patterns):
+            if any(p in page_text for p in patterns):
                 return table_type
         return None
+
+    @staticmethod
+    def _table_first_rows_text(table: ParsedTable) -> str:
+        """Get text from first 3 rows of table for classification."""
+        parts = []
+        for row in table.raw_rows[:3]:
+            for cell in row:
+                if cell:
+                    parts.append(str(cell).replace("\n", ""))
+        return " ".join(parts)
+
+    @staticmethod
+    def _table_first_cells(table: ParsedTable) -> str:
+        """Get first non-empty cell from each of first 5 rows."""
+        parts = []
+        for row in table.raw_rows[:5]:
+            for cell in row:
+                if cell and str(cell).strip():
+                    parts.append(str(cell).replace("\n", "").strip())
+                    break
+        return " ".join(parts)
 
     def _merge_cross_page_tables(self, tables: list[ParsedTable]) -> list[ParsedTable]:
         merged: list[ParsedTable] = []
         for table in tables:
-            if merged and table.table_type and table.table_type == merged[-1].table_type and 1 <= table.page_number - merged[-1].page_number <= 2:
-                merged[-1].raw_rows.extend(table.raw_rows)
-                merged[-1].text += "\n" + table.text
+            if not merged:
+                merged.append(table)
+                continue
+            prev = merged[-1]
+            same_page = table.page_number == prev.page_number
+            adjacent_page = 1 <= table.page_number - prev.page_number <= 2
+            # Same type, different page, adjacent → merge (cross-page continuation)
+            if table.table_type and table.table_type == prev.table_type and adjacent_page and not same_page:
+                prev.raw_rows.extend(table.raw_rows)
+                prev.text += "\n" + table.text
+                continue
+            # Untyped table on adjacent page after a typed table → likely continuation
+            if table.table_type is None and prev.table_type and adjacent_page and not same_page:
+                table.table_type = prev.table_type
+                prev.raw_rows.extend(table.raw_rows)
+                prev.text += "\n" + table.text
                 continue
             merged.append(table)
         return merged
