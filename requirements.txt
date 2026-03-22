@@ -1,0 +1,9 @@
+pdfplumber
+openai
+pandas
+openpyxl
+python-dotenv
+pytest
+gradio
+matplotlib
+faiss-cpu
