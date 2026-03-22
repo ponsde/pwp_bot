@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: OpenViking initialization
-The system SHALL initialize an OpenViking client in embedded mode using `ov.OpenViking(path=<data_path>)` with a configured `ov.conf` file. The `ov.conf` SHALL configure the embedding model (BAAI/bge-m3 via OpenAI-compatible endpoint) with correct `provider`, `model`, `api_base`, `api_key`, and `dimension` (1024) fields.
+The system SHALL initialize an OpenViking client in embedded mode using `ov.OpenViking(path=<data_path>)` or `SyncOpenViking` with a configured `ov.conf` file. The `ov.conf` SHALL configure the embedding model (BAAI/bge-m3 via OpenAI-compatible endpoint) with correct `provider`, `model`, `api_base`, `api_key`, and `dimension` (1024) fields.
 
 #### Scenario: Successful initialization
 - **WHEN** calling `client = ov.OpenViking(path="./data/ov")` and `client.initialize()`
@@ -20,8 +20,15 @@ The system SHALL import PDF files directly into OpenViking using `client.add_res
 - **THEN** the system falls back to importing the pdfplumber-extracted text file via `client.add_resource(path="data/processed/600519_2023.txt", reason=<description>)`
 
 ### Requirement: Verify find retrieval
-The system SHALL support querying OV Resources via `client.find(query, limit=N)` which returns a result object with `.resources` attribute (each item has `.uri`, `.score`, `.abstract`).
+The system SHALL support querying OV Resources via `client.find(query, target_uri=<scope>, limit=N)` which returns a result object with `.resources` attribute (each item has `.uri`, `.score`, `.abstract`).
 
 #### Scenario: Search imported report
 - **WHEN** calling `client.find("贵州茅台发展战略", limit=3)`
 - **THEN** the system returns relevant resources with score > 0, each having uri and abstract fields
+
+### Requirement: OpenViking API compatibility
+The implementation SHALL be compatible with the actual installed OpenViking Python SDK API. Specifically, the implementation SHALL use `add_resource(path, to=..., ...)` and `find(query, target_uri=..., ...)` call patterns.
+
+#### Scenario: SDK compatibility check
+- **WHEN** running the OpenViking integration smoke test
+- **THEN** the code path exercises `add_resource` with a local file path and `find` with a query string

@@ -8,6 +8,7 @@ The system SHALL fetch three types of financial statements (balance sheet, incom
 - **THEN** the system retrieves three DataFrames (利润表: ~83 columns, 资产负债表: ~147 columns, 现金流量表: ~71 columns)
 - **AND** each DataFrame has a `报告日` column with values like "20231231"
 - **AND** all other columns are Chinese metric names (e.g. "营业收入", "净利润")
+- **AND** the raw DataFrame includes metadata columns such as `报告日`, `公告日期`, `类型`, and `币种`
 
 #### Scenario: Batch fetch with progress
 - **WHEN** fetching data for 100 stock codes
@@ -28,27 +29,28 @@ The system SHALL create a SQLite database with three tables:
 - `financial_data` (id INTEGER PK, stock_code TEXT FK, report_date TEXT, statement_type TEXT, item_name TEXT, value REAL) — `report_date` is a string like "20231231" preserving the original AKShare format; `statement_type` is one of "利润表"/"资产负债表"/"现金流量表"
 - `item_mapping` (item_name TEXT, alias TEXT, statement_type TEXT, PK(item_name, alias)) — each row maps one alias to one canonical item_name
 
-The system SHALL create indexes on (stock_code, report_date, statement_type) and (item_name) for query performance.
+The system SHALL create a UNIQUE constraint on (stock_code, report_date, statement_type, item_name) for idempotent loading, and indexes on (stock_code, report_date, statement_type) and (item_name) for query performance.
 
 #### Scenario: Database initialization
 - **WHEN** running schema creation on a fresh database
-- **THEN** all three tables are created with correct column types, foreign keys, and indexes
+- **THEN** all three tables are created with correct column types, foreign keys, indexes, and uniqueness constraints
 
 #### Scenario: Vertical table structure
 - **WHEN** inserting Moutai's 2023 annual revenue
 - **THEN** a single row is inserted with stock_code="600519", report_date="20231231", statement_type="利润表", item_name="营业收入", value=147693604994.14
 
 ### Requirement: Load DataFrames into SQLite
-The system SHALL transform AKShare DataFrames (one row per report period, many columns per metric) into the vertical table format (one row per metric per report period). For each row in the DataFrame: iterate over all metric columns (excluding `报告日`), skip NaN values, and insert (stock_code, report_date, statement_type, item_name, value) into `financial_data`. The system SHALL handle duplicate detection via UNIQUE constraint on (stock_code, report_date, statement_type, item_name) and use INSERT OR IGNORE.
+The system SHALL transform AKShare DataFrames (one row per report period, many columns per metric) into the vertical table format (one row per metric per report period). For each row in the DataFrame: iterate over all metric columns (excluding metadata columns), skip NaN values, and insert (stock_code, report_date, statement_type, item_name, value) into `financial_data`. Metadata columns (`报告日`, `公告日期`, `币种`, `类型`, `数据源`, `更新日期`) SHALL NOT be inserted as `item_name`. The system SHALL use INSERT OR IGNORE for idempotent loading.
 
 #### Scenario: Transform and load
 - **WHEN** loading Moutai's income statement DataFrame (100 rows x 83 columns)
-- **THEN** each non-NaN cell becomes a separate row in financial_data
+- **THEN** each non-NaN metric cell becomes a separate row in financial_data
+- **AND** metadata columns like `报告日`, `公告日期`, `类型`, `币种`, `数据源`, `更新日期` are not inserted as `item_name`
 - **AND** only annual report rows (report_date ending in "1231") are loaded if annual-only mode is selected
 
 #### Scenario: Idempotent loading
 - **WHEN** loading the same company-year data twice
-- **THEN** no duplicate rows are created (INSERT OR IGNORE)
+- **THEN** no duplicate rows are created (INSERT OR IGNORE on UNIQUE constraint)
 
 ### Requirement: Fetch A-share stock list
 The system SHALL retrieve the list of A-share listed companies using `akshare.stock_info_a_code_name()` which returns a DataFrame with columns `code` and `name`. The system SHALL populate the `companies` table with stock_code and company_name.
