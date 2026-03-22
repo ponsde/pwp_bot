@@ -24,7 +24,7 @@ class LLMClient:
     @classmethod
     def from_env(cls) -> "LLMClient":
         settings = load_settings(require_llm_api_key=True)
-        client = OpenAI(api_key=settings.llm_api_key, base_url=settings.llm_base_url, timeout=settings.llm_timeout)
+        client = OpenAI(api_key=settings.llm_api_key, base_url=settings.llm_api_base, timeout=settings.llm_timeout)
         return cls(client=client, model=settings.llm_model, timeout=settings.llm_timeout)
 
     def chat_completion(

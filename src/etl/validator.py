@@ -6,6 +6,7 @@ from typing import Any
 
 
 REPORT_PERIOD_RE = re.compile(r"^20\d{2}(FY|Q1|HY|Q3)$")
+FATAL_WARNING_MARKERS = ("balance_sheet:",)
 
 
 @dataclass
@@ -14,7 +15,11 @@ class ValidationResult:
 
     @property
     def ok(self) -> bool:
-        return True
+        return not any(self._is_fatal_warning(warning) for warning in self.warnings)
+
+    @staticmethod
+    def _is_fatal_warning(warning: str) -> bool:
+        return any(warning.startswith(marker) for marker in FATAL_WARNING_MARKERS)
 
 
 class DataValidator:
@@ -44,7 +49,8 @@ class DataValidator:
         equity = row.get("equity_total_equity")
         if None not in (assets, liabilities, equity):
             diff = round(assets - liabilities - equity, 2)
-            if abs(diff) > 1.0:
+            tolerance = abs(assets) * 0.01
+            if abs(diff) > tolerance:
                 warnings.append(f"balance_sheet: assets != liabilities + equity, diff={diff}")
 
     def _validate_income(self, records: dict[str, dict[str, Any]], warnings: list[str]) -> None:

@@ -29,8 +29,8 @@ FULL_SCAN_PAGE_LIMIT = 120
 TABLE_TITLE_PATTERNS = {
     "core_performance_indicators_sheet": ["主要会计数据", "主要财务指标", "分季度主要财务指标"],
     "balance_sheet": ["合并资产负债表"],
-    "income_sheet": ["合并利润表"],
-    "cash_flow_sheet": ["合并现金流量表"],
+    "income_sheet": ["合并利润表", "合并年初到报告期末利润表"],
+    "cash_flow_sheet": ["合并现金流量表", "合并年初到报告期末现金流量表"],
 }
 
 
@@ -74,10 +74,7 @@ class PDFParser:
         tables: list[ParsedTable] = []
         with pdfplumber.open(path) as pdf:
             if meta["report_period"].endswith("FY"):
-                if meta["exchange"] == "SZSE":
-                    tail_start = 99
-                else:
-                    tail_start = 75
+                tail_start = 99 if meta["exchange"] == "SZSE" else 75
                 page_indices = list(range(min(len(pdf.pages), HEAD_PAGE_LIMIT))) + list(range(tail_start, min(len(pdf.pages), FULL_SCAN_PAGE_LIMIT)))
             else:
                 page_indices = list(range(min(len(pdf.pages), 40)))
@@ -122,16 +119,18 @@ class PDFParser:
             raise ValueError(f"Unrecognized SSE file name: {path.name}")
         stock_code = m.group("code")
         info = self.company_mapping[stock_code]
+        file_date = m.group("date")
         with pdfplumber.open(path) as pdf:
             first_text = "\n".join((pdf.pages[i].extract_text() or "") for i in range(min(2, len(pdf.pages))))
         t = SSE_TITLE_RE.search(first_text)
-        if not t:
-            raise ValueError(f"Unable to infer SSE title from first page: {path}")
-        year = int(t.group("year"))
-        period_name = t.group("period")
-        is_summary = "摘要" in period_name
-        normalized = period_name.replace("摘要", "")
-        period = f"{year}{PERIOD_MAP[normalized]}"
+        if t:
+            year = int(t.group("year"))
+            period_name = t.group("period")
+            is_summary = "摘要" in period_name
+            normalized = period_name.replace("摘要", "")
+            period = f"{year}{PERIOD_MAP[normalized]}"
+        else:
+            year, period, is_summary = self._infer_sse_period_from_filename_date(file_date)
         return {
             "stock_code": stock_code,
             "stock_abbr": info["stock_abbr"],
@@ -139,6 +138,23 @@ class PDFParser:
             "report_year": year,
             "is_summary": is_summary,
         }
+
+    def _infer_sse_period_from_filename_date(self, file_date: str) -> tuple[int, str, bool]:
+        year = int(file_date[:4])
+        month = int(file_date[4:6])
+        if month == 4:
+            report_year = year - 1
+            suffix = "FY"
+        elif month == 8:
+            report_year = year
+            suffix = "HY"
+        elif month == 10:
+            report_year = year
+            suffix = "Q3"
+        else:
+            report_year = year
+            suffix = "Q1"
+        return report_year, f"{report_year}{suffix}", False
 
     def _guess_title(self, page_text: str) -> str | None:
         for titles in TABLE_TITLE_PATTERNS.values():
@@ -148,12 +164,12 @@ class PDFParser:
         return None
 
     def _classify_table(self, table: ParsedTable) -> str | None:
-        text = (table.title or "") + "\n" + table.text[:1000]
+        text = (table.title or "") + "\n" + table.text[:1500]
         if "合并资产负债表" in text:
             return "balance_sheet"
-        if "合并利润表" in text:
+        if "合并利润表" in text or "合并年初到报告期末利润表" in text:
             return "income_sheet"
-        if "合并现金流量表" in text:
+        if "合并现金流量表" in text or "合并年初到报告期末现金流量表" in text:
             return "cash_flow_sheet"
         if any(p in text for p in TABLE_TITLE_PATTERNS["core_performance_indicators_sheet"]):
             return "core_performance_indicators_sheet"

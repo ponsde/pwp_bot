@@ -8,54 +8,26 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from src.etl.schema import load_schema_metadata
 from src.prompts.loader import load_prompt
 from src.query.conversation import ConversationManager
 
-CREATE_TABLE_SQL = """
-CREATE TABLE core_performance_indicators_sheet (
-    serial_number INTEGER,
-    stock_code TEXT,
-    stock_abbr TEXT,
-    report_period TEXT,
-    report_year INTEGER,
-    revenue REAL,
-    net_profit REAL
-);
-CREATE TABLE balance_sheet (
-    serial_number INTEGER,
-    stock_code TEXT,
-    stock_abbr TEXT,
-    report_period TEXT,
-    report_year INTEGER,
-    total_assets REAL,
-    total_liabilities REAL,
-    total_equity REAL
-);
-CREATE TABLE income_sheet (
-    serial_number INTEGER,
-    stock_code TEXT,
-    stock_abbr TEXT,
-    report_period TEXT,
-    report_year INTEGER,
-    operating_revenue REAL,
-    total_profit REAL,
-    net_profit REAL
-);
-CREATE TABLE cash_flow_sheet (
-    serial_number INTEGER,
-    stock_code TEXT,
-    stock_abbr TEXT,
-    report_period TEXT,
-    report_year INTEGER,
-    net_cash_flow REAL
-);
-""".strip()
 
+def _build_create_table_sql() -> str:
+    metadata = load_schema_metadata()
+    statements: list[str] = []
+    for table_name, fields in metadata.items():
+        columns = []
+        for field in fields:
+            columns.append(f'    "{field.name}" {field.sqlite_type}')
+        statements.append(f'CREATE TABLE "{table_name}" (\n' + ",\n".join(columns) + "\n);")
+    return "\n\n".join(statements)
+
+
+CREATE_TABLE_SQL = _build_create_table_sql()
 FIELD_CATALOG = {
-    "core_performance_indicators_sheet": ["revenue", "net_profit"],
-    "balance_sheet": ["total_assets", "total_liabilities", "total_equity"],
-    "income_sheet": ["operating_revenue", "total_profit", "net_profit"],
-    "cash_flow_sheet": ["net_cash_flow"],
+    table_name: [field.name for field in fields if field.name not in {"serial_number", "stock_code", "stock_abbr", "report_period", "report_year"}]
+    for table_name, fields in load_schema_metadata().items()
 }
 
 
@@ -90,7 +62,9 @@ class Text2SQLEngine:
             raw = self.llm_client.complete(prompt)
             intent = self._parse_json(raw)
         else:
-            intent = self._heuristic_intent(question, conversation_text)
+            intent = self._heuristic_intent(question)
+        if conversation:
+            intent = conversation.merge_intent(intent)
         self._validate_intent(intent)
         return intent
 
@@ -105,13 +79,13 @@ class Text2SQLEngine:
             raw = self.llm_client.complete(prompt)
             sql = self._extract_sql(raw)
         else:
-            sql = self._heuristic_sql(intent)
+            sql = self._heuristic_sql(question, intent)
         self._ensure_standard_report_period(sql)
         return sql
 
     def query(self, question: str, conversation: ConversationManager | None = None) -> QueryResult:
-        intent = self.analyze(question, conversation)
         manager = conversation or ConversationManager()
+        intent = self.analyze(question, manager)
         missing = manager.missing_slots(intent)
         if missing:
             clarification = self._clarify(question, missing, manager)
@@ -130,6 +104,21 @@ class Text2SQLEngine:
             return QueryResult(sql=sql, rows=rows, intent=intent)
         except UserFacingError as exc:
             return QueryResult(sql=None, rows=[], intent=intent, error=str(exc))
+
+    def list_companies(self) -> list[str]:
+        conn = sqlite3.connect(self.db_path)
+        try:
+            rows = conn.execute(
+                "SELECT DISTINCT stock_abbr FROM ("
+                "SELECT stock_abbr FROM core_performance_indicators_sheet "
+                "UNION ALL SELECT stock_abbr FROM balance_sheet "
+                "UNION ALL SELECT stock_abbr FROM income_sheet "
+                "UNION ALL SELECT stock_abbr FROM cash_flow_sheet"
+                ") WHERE stock_abbr IS NOT NULL AND stock_abbr <> '' ORDER BY stock_abbr"
+            ).fetchall()
+            return [row[0] for row in rows]
+        finally:
+            conn.close()
 
     def _execute_with_retry(self, sql: str, question: str, intent: dict[str, Any]) -> list[dict[str, Any]]:
         errors: list[str] = []
@@ -163,15 +152,15 @@ class Text2SQLEngine:
             if not re.fullmatch(r"\d{4}(FY|Q1|HY|Q3)", period):
                 raise UserFacingError(f"报告期格式不正确：{period}")
 
-    def _heuristic_intent(self, question: str, conversation: str) -> dict[str, Any]:
-        text = f"{conversation}\n{question}"
-        companies = [name for name in ["金花股份", "华润三九"] if name in text]
+    def _heuristic_intent(self, question: str) -> dict[str, Any]:
+        text = question.strip()
+        companies = [name for name in self.list_companies() if name and name in text]
         periods = re.findall(r"(20\d{2}(?:FY|Q1|HY|Q3))", text)
         if not periods:
             year_match = re.search(r"(20\d{2})年", text)
             if year_match:
                 year = year_match.group(1)
-                if "第三季度" in text:
+                if "第三季度" in text or "三季度" in text:
                     periods = [f"{year}Q3"]
                 elif "半年度" in text or "半年" in text:
                     periods = [f"{year}HY"]
@@ -182,9 +171,10 @@ class Text2SQLEngine:
         field_map = {
             "利润总额": ("income_sheet", "total_profit"),
             "净利润": ("income_sheet", "net_profit"),
-            "营业收入": ("income_sheet", "operating_revenue"),
-            "总资产": ("balance_sheet", "total_assets"),
-            "负债": ("balance_sheet", "total_liabilities"),
+            "营业收入": ("income_sheet", "total_operating_revenue"),
+            "营业总收入": ("income_sheet", "total_operating_revenue"),
+            "总资产": ("balance_sheet", "asset_total_assets"),
+            "负债": ("balance_sheet", "liability_total_liabilities"),
             "净现金流": ("cash_flow_sheet", "net_cash_flow"),
         }
         tables, fields = [], []
@@ -192,6 +182,9 @@ class Text2SQLEngine:
             if cn in text:
                 tables.append(table)
                 fields.append(field)
+        if not fields and any(token in text for token in ["变化趋势", "趋势", "走势"]):
+            tables.append("income_sheet")
+            fields.append("total_profit")
         return {
             "tables": list(dict.fromkeys(tables)),
             "fields": list(dict.fromkeys(fields)),
@@ -199,19 +192,26 @@ class Text2SQLEngine:
             "periods": periods,
         }
 
-    def _heuristic_sql(self, intent: dict[str, Any]) -> str:
+    def _heuristic_sql(self, question: str, intent: dict[str, Any]) -> str:
         if not intent["tables"]:
             raise UserFacingError("未识别到可查询的数据表。")
         table = intent["tables"][0]
         fields = intent["fields"] or ["*"]
+        select_fields = []
+        if any(token in question for token in ["趋势", "变化", "历年", "走势", "近几年", "近几年的"]):
+            select_fields = ["report_period", *fields]
+        else:
+            select_fields = fields
         where = []
         if intent["companies"]:
             where.append(f"stock_abbr = '{intent['companies'][0]}'")
         if intent["periods"]:
             where.append(f"report_period = '{intent['periods'][0]}'")
-        sql = f"SELECT {', '.join(fields)} FROM {table}"
+        sql = f"SELECT {', '.join(dict.fromkeys(select_fields))} FROM {table}"
         if where:
             sql += " WHERE " + " AND ".join(where)
+        if any(token in question for token in ["趋势", "变化", "历年", "走势", "近几年", "近几年的"]):
+            sql += " ORDER BY report_year, report_period"
         return sql
 
     def _repair_sql(self, sql: str, error: str) -> str:

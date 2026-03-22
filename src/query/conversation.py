@@ -14,6 +14,7 @@ class ConversationTurn:
 @dataclass
 class ConversationManager:
     history: List[ConversationTurn] = field(default_factory=list)
+    slots: dict = field(default_factory=lambda: {"companies": [], "fields": [], "periods": [], "tables": []})
 
     def add_user_message(self, content: str) -> None:
         self.history.append(ConversationTurn(role="user", content=content))
@@ -26,6 +27,17 @@ class ConversationManager:
 
     def render(self) -> str:
         return "\n".join(f"{turn.role}: {turn.content}" for turn in self.history)
+
+    def merge_intent(self, intent: dict) -> dict:
+        merged = dict(intent)
+        for key in ["tables", "fields", "companies", "periods"]:
+            current = list(intent.get(key, []) or [])
+            if current:
+                self.slots[key] = current
+                merged[key] = current
+            else:
+                merged[key] = list(self.slots.get(key, []))
+        return merged
 
     def missing_slots(self, intent: dict) -> list[str]:
         missing: list[str] = []

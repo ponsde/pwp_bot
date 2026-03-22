@@ -68,13 +68,17 @@ ALIASES = {
         "归属于上市公司股东的净利润": "net_profit_10k_yuan",
         "归属于上市公司股东的扣除非经常性损益的净利润": "net_profit_excl_non_recurring",
         "归属于上市公司股东的每股净资产": "net_asset_per_share",
+        "归属于上市公司股东的净资产": "net_asset_per_share",
         "加权平均净资产收益率": "roe",
-        "经营活动产生的现金流量净额": "operating_cf_per_share",
+        "经营活动产生的现金流量净额": "operating_cf_net_amount",
         "毛利率": "gross_profit_margin",
         "净利率": "net_profit_margin",
         "扣除非经常性损益后的加权平均净资产收益率": "roe_weighted_excl_non_recurring",
     },
 }
+
+UNIT_RE = re.compile(r"单位[：:]\s*([人民币]*)(元|万元)")
+YEAR_HEADER_RE = re.compile(r"20\d{2}年(?:末)?")
 
 
 class TableExtractor:
@@ -100,10 +104,11 @@ class TableExtractor:
         for table in parsed_pdf.tables:
             if not table.table_type:
                 continue
+            source_unit = self._detect_source_unit(table)
             if table.table_type == "core_performance_indicators_sheet":
-                self._extract_core_metrics(table, records[table.table_type], warnings)
+                self._extract_core_metrics(table, records[table.table_type], parsed_pdf.report_period, source_unit, warnings)
             else:
-                self._extract_statement_table(table, table.table_type, records[table.table_type], warnings)
+                self._extract_statement_table(table, table.table_type, records[table.table_type], source_unit, warnings)
         self._compute_derived_fields(records)
         income = records["income_sheet"]
         core = records["core_performance_indicators_sheet"]
@@ -114,13 +119,21 @@ class TableExtractor:
             income["total_operating_revenue"] = core["total_operating_revenue"]
         if balance.get("asset_total_assets") is None:
             for text in parsed_pdf.page_texts:
+                unit = self._detect_text_unit(text)
                 m = re.search(r"资产总计\s+(-?[\d,]+(?:\.\d+)?)", text.replace("\n", " "))
                 if m:
-                    balance["asset_total_assets"] = round(float(m.group(1).replace(',', '')) / 10000, 2)
+                    balance["asset_total_assets"] = self._convert_value(m.group(1), self.meta_by_field["balance_sheet"]["asset_total_assets"], unit)
                     break
         return records, warnings
 
-    def _extract_statement_table(self, table: ParsedTable, table_type: str, target: dict[str, Any], warnings: list[str]) -> None:
+    def _extract_statement_table(
+        self,
+        table: ParsedTable,
+        table_type: str,
+        target: dict[str, Any],
+        source_unit: str | None,
+        warnings: list[str],
+    ) -> None:
         aliases = ALIASES[table_type]
         for row in table.raw_rows:
             if not row:
@@ -132,28 +145,36 @@ class TableExtractor:
             value = self._find_first_numeric(cells[1:])
             field = aliases.get(label)
             if field and value is not None:
-                target[field] = self._convert_value(value, self.meta_by_field[table_type][field])
+                target[field] = self._convert_value(value, self.meta_by_field[table_type][field], source_unit)
             elif value is not None and label not in aliases and label not in {"项目", "附注", "流动资产：", "负债合计", "所有者权益（或股东权益）"}:
                 warnings.append(f"Unmapped {table_type} field: {label}")
 
-    def _extract_core_metrics(self, table: ParsedTable, target: dict[str, Any], warnings: list[str]) -> None:
+    def _extract_core_metrics(
+        self,
+        table: ParsedTable,
+        target: dict[str, Any],
+        report_period: str,
+        source_unit: str | None,
+        warnings: list[str],
+    ) -> None:
         aliases = ALIASES["core_performance_indicators_sheet"]
-        quarter_labels = {"第一季度": 1, "第二季度": 2, "第三季度": 3, "第四季度": 4}
-        period_suffix = target["report_period"][-2:]
+        header = self._extract_header_cells(table)
+        period_key = self._infer_core_period_key(report_period)
         for row in table.raw_rows:
             if not row:
                 continue
-            cells = [self._clean_text(cell) for cell in row if cell not in (None, "")]
+            normalized_row = [self._clean_text(cell) if cell not in (None, "") else "" for cell in row]
+            cells = [cell for cell in normalized_row if cell]
             if len(cells) < 2:
                 continue
             label = cells[0]
             field = aliases.get(label)
             if field:
-                value = self._select_core_value(cells, period_suffix)
+                value = self._select_core_value(normalized_row, header, period_key)
                 if value is not None:
-                    target[field] = self._convert_value(value, self.meta_by_field["core_performance_indicators_sheet"][field])
+                    target[field] = self._convert_value(value, self.meta_by_field["core_performance_indicators_sheet"][field], source_unit)
                     continue
-            if any(k in label for k in quarter_labels) or label in {"项目", "本报告期", "本报告期末"}:
+            if label in {"项目", "本报告期", "本报告期末"} or any(token in label for token in ("第一季度", "第二季度", "第三季度", "第四季度", "一季度", "二季度", "三季度", "四季度")):
                 continue
             if self._find_first_numeric(cells[1:]) is not None and label not in aliases:
                 warnings.append(f"Unmapped core field: {label}")
@@ -176,8 +197,9 @@ class TableExtractor:
                 ("investing_cf_net_amount", "investing_cf_ratio_of_net_cf"),
                 ("financing_cf_net_amount", "financing_cf_ratio_of_net_cf"),
             ]:
-                if cash.get(numerator) is not None:
-                    cash[ratio_field] = round((cash[numerator] * 10000) / net_cash_flow * 100, 4)
+                numerator_value = cash.get(numerator)
+                if numerator_value is not None:
+                    cash[ratio_field] = round((numerator_value * 10000 / net_cash_flow) * 100, 4)
 
     @staticmethod
     def _clean_text(value: Any) -> str:
@@ -192,12 +214,70 @@ class TableExtractor:
                 return cell
         return None
 
-    def _select_core_value(self, cells: list[str], period_suffix: str) -> str | None:
-        if period_suffix == "FY":
-            return self._find_first_numeric(cells[1:])
-        if period_suffix in {"Q1", "HY", "Q3"}:
-            return self._find_first_numeric(cells[1:])
+    def _select_core_value(self, row: list[str], header: list[str], period_key: str) -> str | None:
+        if not header:
+            return self._find_first_numeric([cell for cell in row[1:] if cell])
+        candidates = self._candidate_period_headers(period_key)
+        for idx, title in enumerate(header[1:], start=1):
+            normalized = self._clean_text(title)
+            if normalized and any(token in normalized for token in candidates):
+                value = row[idx] if idx < len(row) else ""
+                if value and self._is_numeric_text(value):
+                    return value
+        for idx, title in enumerate(header[1:], start=1):
+            normalized = self._clean_text(title)
+            if period_key == "FY" and YEAR_HEADER_RE.fullmatch(normalized):
+                value = row[idx] if idx < len(row) else ""
+                if value and self._is_numeric_text(value):
+                    return value
+        return self._find_first_numeric([cell for cell in row[1:] if cell])
+
+    @staticmethod
+    def _infer_core_period_key(report_period: str) -> str:
+        if report_period.endswith("FY"):
+            return "FY"
+        return report_period[-2:]
+
+    @staticmethod
+    def _candidate_period_headers(period_key: str) -> tuple[str, ...]:
+        mapping = {
+            "Q1": ("第一季度", "一季度", "本报告期", "本报告期末", "1-3月份"),
+            "HY": ("半年度", "上半年", "本报告期", "本报告期末", "1-6月", "1-6月份"),
+            "Q3": ("第三季度", "三季度", "本报告期", "本报告期末", "7-9月份", "9月30日"),
+            "FY": ("本期", "本报告期", "本期末"),
+        }
+        return mapping.get(period_key, tuple())
+
+    def _extract_header_cells(self, table: ParsedTable) -> list[str]:
+        for row in table.raw_rows[:4]:
+            normalized = [self._clean_text(cell) if cell not in (None, "") else "" for cell in row]
+            non_empty = [cell for cell in normalized if cell]
+            if len(non_empty) >= 2 and any(self._looks_like_header_cell(cell) for cell in non_empty[1:]):
+                return normalized
+        return []
+
+    @staticmethod
+    def _looks_like_header_cell(text: str) -> bool:
+        return any(token in text for token in ("季度", "年度", "本报告期", "本期", "期末", "月份", "年"))
+
+    def _detect_source_unit(self, table: ParsedTable) -> str | None:
+        text = "\n".join(filter(None, [table.title or "", table.text, self._flatten_rows(table.raw_rows)]))
+        return self._detect_text_unit(text)
+
+    @staticmethod
+    def _flatten_rows(rows: list[list[Any]]) -> str:
+        return "\n".join(" ".join(str(cell) for cell in row if cell not in (None, "")) for row in rows)
+
+    def _detect_text_unit(self, text: str) -> str | None:
+        match = UNIT_RE.search(text)
+        if match:
+            return match.group(2)
         return None
+
+    @staticmethod
+    def _is_numeric_text(text: str) -> bool:
+        cleaned = text.replace(",", "").replace("%", "")
+        return bool(re.fullmatch(r"-?\d+(?:\.\d+)?", cleaned))
 
     @staticmethod
     def _parse_number(text: str) -> float:
@@ -208,10 +288,16 @@ class TableExtractor:
             raise ValueError("empty numeric text")
         return float(text)
 
-    def _convert_value(self, value: str, meta: FieldMeta) -> float:
+    def _convert_value(self, value: str, meta: FieldMeta, source_unit: str | None) -> float:
         numeric = self._parse_number(value)
         if meta.unit == "万元":
-            return round(numeric / 10000, 2)
-        if meta.unit in {"元", "%", "比率", ""}:
-            return round(numeric, 4) if meta.unit in {"%", "比率"} else round(numeric, 2 if meta.unit == "元" else 4)
-        return numeric
+            if source_unit == "元":
+                return round(numeric / 10000, 2)
+            return round(numeric, 2)
+        if meta.unit == "元":
+            if source_unit == "万元":
+                return round(numeric * 10000, 2)
+            return round(numeric, 2)
+        if meta.unit in {"%", "比率"}:
+            return round(numeric, 4)
+        return round(numeric, 4)

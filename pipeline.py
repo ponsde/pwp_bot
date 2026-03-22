@@ -3,28 +3,31 @@ from __future__ import annotations
 
 import argparse
 import json
-import sqlite3
 from pathlib import Path
 
+from config import REPORTS_DIR
+from src.etl.loader import ETLLoader
 from src.query.answer import build_answer_content, build_answer_record, write_result_xlsx
 from src.query.chart import render_chart, select_chart_type
 from src.query.conversation import ConversationManager
-from src.query.text2sql import CREATE_TABLE_SQL, Text2SQLEngine
+from src.query.text2sql import Text2SQLEngine
 
 
-def ensure_demo_db(db_path: str) -> None:
-    conn = sqlite3.connect(db_path)
-    try:
-        conn.executescript(CREATE_TABLE_SQL)
-        conn.execute(
-            "INSERT OR REPLACE INTO income_sheet VALUES (1,'600080','金花股份','2025Q3',2025,123000000,31400000,25100000)"
-        )
-        conn.execute(
-            "INSERT OR REPLACE INTO income_sheet VALUES (2,'000999','华润三九','2025Q3',2025,456000000,88000000,70000000)"
-        )
-        conn.commit()
-    finally:
-        conn.close()
+def run_etl(input_dir: str, db_path: str) -> dict[str, object]:
+    loader = ETLLoader(Path(db_path))
+    pdf_paths = sorted(Path(input_dir).rglob("*.pdf"))
+    results = [loader.load_pdf(pdf_path) for pdf_path in pdf_paths]
+    summary = {
+        "status": "completed",
+        "db_path": db_path,
+        "input_dir": input_dir,
+        "processed": len(results),
+        "loaded": sum(1 for item in results if item["status"] == "loaded"),
+        "skipped": sum(1 for item in results if item["status"] == "skipped"),
+        "rejected": sum(1 for item in results if item["status"] == "rejected"),
+        "results": results,
+    }
+    return summary
 
 
 def run_answer(input_path: str, db_path: str, output_xlsx: str) -> str:
@@ -58,16 +61,14 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--task", choices=["etl", "answer"], required=True)
     parser.add_argument("--db-path", default="data/db/finance.db")
-    parser.add_argument("--input", default="questions.json")
+    parser.add_argument("--input", default=str(REPORTS_DIR))
     parser.add_argument("--output", default="result_2.xlsx")
     args = parser.parse_args()
 
     Path(args.db_path).parent.mkdir(parents=True, exist_ok=True)
     if args.task == "etl":
-        ensure_demo_db(args.db_path)
-        print(args.db_path)
+        print(json.dumps(run_etl(args.input, args.db_path), ensure_ascii=False, indent=2))
     else:
-        ensure_demo_db(args.db_path)
         print(run_answer(args.input, args.db_path, args.output))
 
 
