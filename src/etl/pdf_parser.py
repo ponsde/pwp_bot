@@ -88,11 +88,8 @@ class PDFParser:
         page_texts: list[str] = []
         tables: list[ParsedTable] = []
         with pdfplumber.open(path) as pdf:
-            if meta["report_period"].endswith("FY"):
-                tail_start = 99 if meta["exchange"] == "SZSE" else 75
-                page_indices = list(range(min(len(pdf.pages), HEAD_PAGE_LIMIT))) + list(range(tail_start, min(len(pdf.pages), FULL_SCAN_PAGE_LIMIT)))
-            else:
-                page_indices = list(range(min(len(pdf.pages), 40)))
+            # Scan all pages — don't skip middle pages where tables may appear
+            page_indices = list(range(len(pdf.pages)))
             seen = set()
             previous_text = ""
             for page_idx in page_indices:

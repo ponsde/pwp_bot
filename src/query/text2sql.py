@@ -89,6 +89,16 @@ class Text2SQLEngine:
     def query(self, question: str, conversation: ConversationManager | None = None) -> QueryResult:
         manager = conversation or ConversationManager()
         intent = self.analyze(question, manager)
+        # Check if mentioned company exists in DB
+        if intent.get("companies"):
+            available = self.list_companies()
+            unknown = [c for c in intent["companies"] if c not in available]
+            if unknown:
+                avail_str = "、".join(available) if available else "（数据库为空）"
+                return QueryResult(
+                    sql=None, rows=[], intent=intent,
+                    error=f"未找到公司「{'、'.join(unknown)}」。可查询的公司：{avail_str}",
+                )
         missing = manager.missing_slots(intent)
         if missing:
             clarification = self._clarify(question, missing, manager)
@@ -141,9 +151,7 @@ class Text2SQLEngine:
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         try:
-            normalized_sql = self._parameterize_sql(sql, intent)
-            params = self._build_sql_params(intent)
-            cur = conn.execute(normalized_sql, params)
+            cur = conn.execute(sql)
             return [dict(row) for row in cur.fetchall()]
         finally:
             conn.close()
@@ -259,25 +267,6 @@ class Text2SQLEngine:
             raise UserFacingError("SQL 包含不允许的关键字。")
         if ";" in sql.strip().rstrip(";"):
             raise UserFacingError("不允许执行多条 SQL。")
-
-    def _parameterize_sql(self, sql: str, intent: dict[str, Any]) -> str:
-        normalized = sql
-        if intent.get("companies"):
-            company = intent["companies"][0].replace("'", "''")
-            normalized = re.sub(rf"stock_abbr\s*=\s*'{re.escape(company)}'", "stock_abbr = ?", normalized, flags=re.I)
-        if intent.get("periods"):
-            period = intent["periods"][0]
-            normalized = re.sub(rf"report_period\s*=\s*'{re.escape(period)}'", "report_period = ?", normalized, flags=re.I)
-        return normalized
-
-    @staticmethod
-    def _build_sql_params(intent: dict[str, Any]) -> tuple[Any, ...]:
-        params: list[Any] = []
-        if intent.get("companies"):
-            params.append(intent["companies"][0])
-        if intent.get("periods"):
-            params.append(intent["periods"][0])
-        return tuple(params)
 
     def _clarify(self, question: str, missing: list[str], conversation: ConversationManager) -> str:
         if self.llm_client:
