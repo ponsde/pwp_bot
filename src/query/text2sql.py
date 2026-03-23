@@ -29,6 +29,8 @@ FIELD_CATALOG = {
     table_name: [field.name for field in fields if field.name not in {"serial_number", "stock_code", "stock_abbr", "report_period", "report_year"}]
     for table_name, fields in load_schema_metadata().items()
 }
+SAFE_SELECT_RE = re.compile(r"^\s*select\s+", re.I)
+FORBIDDEN_SQL_RE = re.compile(r"\b(insert|update|delete|drop|attach|pragma|alter|create|replace)\b", re.I)
 
 
 class UserFacingError(Exception):
@@ -81,6 +83,7 @@ class Text2SQLEngine:
         else:
             sql = self._heuristic_sql(question, intent)
         self._ensure_standard_report_period(sql)
+        self._ensure_safe_sql(sql)
         return sql
 
     def query(self, question: str, conversation: ConversationManager | None = None) -> QueryResult:
@@ -125,7 +128,7 @@ class Text2SQLEngine:
         current_sql = sql
         for _ in range(3):
             try:
-                return self._execute_sql(current_sql)
+                return self._execute_sql(current_sql, intent)
             except sqlite3.DatabaseError as exc:
                 errors.append(str(exc))
                 if self.llm_client:
@@ -134,11 +137,13 @@ class Text2SQLEngine:
                     current_sql = self._repair_sql(current_sql, str(exc))
         raise UserFacingError(f"SQL 执行失败：{'; '.join(errors)}")
 
-    def _execute_sql(self, sql: str) -> list[dict[str, Any]]:
+    def _execute_sql(self, sql: str, intent: dict[str, Any]) -> list[dict[str, Any]]:
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         try:
-            cur = conn.execute(sql)
+            normalized_sql = self._parameterize_sql(sql, intent)
+            params = self._build_sql_params(intent)
+            cur = conn.execute(normalized_sql, params)
             return [dict(row) for row in cur.fetchall()]
         finally:
             conn.close()
@@ -148,6 +153,7 @@ class Text2SQLEngine:
             raise UserFacingError("无法识别查询意图。")
         for key in ["tables", "fields", "companies", "periods"]:
             intent.setdefault(key, [])
+        intent.setdefault("is_trend", False)
         for period in intent["periods"]:
             if not re.fullmatch(r"\d{4}(FY|Q1|HY|Q3)", period):
                 raise UserFacingError(f"报告期格式不正确：{period}")
@@ -166,7 +172,7 @@ class Text2SQLEngine:
                     periods = [f"{year}HY"]
                 elif "第一季度" in text or "一季度" in text:
                     periods = [f"{year}Q1"]
-                elif "年度" in text or "年报" in text:
+                else:
                     periods = [f"{year}FY"]
         field_map = {
             "利润总额": ("income_sheet", "total_profit"),
@@ -174,8 +180,12 @@ class Text2SQLEngine:
             "营业收入": ("income_sheet", "total_operating_revenue"),
             "营业总收入": ("income_sheet", "total_operating_revenue"),
             "总资产": ("balance_sheet", "asset_total_assets"),
+            "总负债": ("balance_sheet", "liability_total_liabilities"),
             "负债": ("balance_sheet", "liability_total_liabilities"),
             "净现金流": ("cash_flow_sheet", "net_cash_flow"),
+            "经营现金流": ("cash_flow_sheet", "operating_cf_net_amount"),
+            "每股收益": ("core_performance_indicators_sheet", "eps"),
+            "净资产收益率": ("core_performance_indicators_sheet", "roe"),
         }
         tables, fields = [], []
         for cn, (table, field) in field_map.items():
@@ -199,8 +209,7 @@ class Text2SQLEngine:
             raise UserFacingError("未识别到可查询的数据表。")
         table = intent["tables"][0]
         fields = intent["fields"] or ["*"]
-        select_fields = []
-        if any(token in question for token in ["趋势", "变化", "历年", "走势", "近几年", "近几年的"]):
+        if intent.get("is_trend") or any(token in question for token in ["趋势", "变化", "历年", "走势", "近几年", "近几年的"]):
             select_fields = ["report_period", *fields]
         else:
             select_fields = fields
@@ -212,7 +221,7 @@ class Text2SQLEngine:
         sql = f"SELECT {', '.join(dict.fromkeys(select_fields))} FROM {table}"
         if where:
             sql += " WHERE " + " AND ".join(where)
-        if any(token in question for token in ["趋势", "变化", "历年", "走势", "近几年", "近几年的"]):
+        if intent.get("is_trend") or any(token in question for token in ["趋势", "变化", "历年", "走势", "近几年", "近几年的"]):
             sql += " ORDER BY report_year, report_period"
         return sql
 
@@ -242,6 +251,33 @@ class Text2SQLEngine:
         invalid = re.search(r"report_period\s*=\s*'?(FY|Q1|HY|Q3)'?", sql)
         if invalid:
             raise UserFacingError("SQL 中 report_period 必须使用完整格式，如 2025Q3。")
+
+    def _ensure_safe_sql(self, sql: str) -> None:
+        if not SAFE_SELECT_RE.search(sql):
+            raise UserFacingError("只允许执行 SELECT 查询。")
+        if FORBIDDEN_SQL_RE.search(sql):
+            raise UserFacingError("SQL 包含不允许的关键字。")
+        if ";" in sql.strip().rstrip(";"):
+            raise UserFacingError("不允许执行多条 SQL。")
+
+    def _parameterize_sql(self, sql: str, intent: dict[str, Any]) -> str:
+        normalized = sql
+        if intent.get("companies"):
+            company = intent["companies"][0].replace("'", "''")
+            normalized = re.sub(rf"stock_abbr\s*=\s*'{re.escape(company)}'", "stock_abbr = ?", normalized, flags=re.I)
+        if intent.get("periods"):
+            period = intent["periods"][0]
+            normalized = re.sub(rf"report_period\s*=\s*'{re.escape(period)}'", "report_period = ?", normalized, flags=re.I)
+        return normalized
+
+    @staticmethod
+    def _build_sql_params(intent: dict[str, Any]) -> tuple[Any, ...]:
+        params: list[Any] = []
+        if intent.get("companies"):
+            params.append(intent["companies"][0])
+        if intent.get("periods"):
+            params.append(intent["periods"][0])
+        return tuple(params)
 
     def _clarify(self, question: str, missing: list[str], conversation: ConversationManager) -> str:
         if self.llm_client:

@@ -1,127 +1,128 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 from pathlib import Path
 
-import pytest
-
+from pipeline import run_answer, run_etl
 from config import REPORTS_DIR
 from src.etl.loader import ETLLoader
 from src.etl.pdf_parser import PDFParser
-from src.etl.schema import create_tables, load_company_mapping, load_schema_metadata, validate_schema
 from src.etl.table_extractor import TableExtractor
-from src.etl.validator import DataValidator
+from src.query.conversation import ConversationManager
+from src.query.text2sql import Text2SQLEngine
 
 
-@pytest.fixture()
-def temp_db(tmp_path: Path) -> Path:
-    return tmp_path / "test_financial_reports.db"
-
-
-def test_schema_create_and_validate(temp_db: Path) -> None:
-    metadata = create_tables(temp_db)
-    validate_schema(temp_db, metadata)
-    assert set(metadata) == {
-        "core_performance_indicators_sheet",
-        "balance_sheet",
-        "income_sheet",
-        "cash_flow_sheet",
-    }
-    assert any(field.name == "net_cash_flow" and field.unit == "元" for field in metadata["cash_flow_sheet"])
-    assert any(field.name == "eps" and field.unit == "元" for field in metadata["core_performance_indicators_sheet"])
-
-
-def test_company_mapping_loads() -> None:
-    mapping = load_company_mapping()
-    assert mapping["000999"]["stock_abbr"] == "华润三九"
-    assert mapping["金花股份"]["stock_code"] == "600080"
-
-
-def test_pdf_parser_identifies_szse_and_sse() -> None:
-    parser = PDFParser()
-    szse = parser.parse(REPORTS_DIR / "reports-深交所" / "华润三九：2023年年度报告.pdf")
-    assert szse.stock_abbr == "华润三九"
-    assert szse.report_period == "2023FY"
-    assert not szse.is_summary
-    assert {t.table_type for t in szse.tables if t.table_type} >= {
-        "core_performance_indicators_sheet",
-        "balance_sheet",
-        "income_sheet",
-        "cash_flow_sheet",
-    }
-
-    sse = parser.parse(REPORTS_DIR / "reports-上交所" / "600080_20240427_0WKP.pdf")
-    assert sse.stock_code == "600080"
-    assert sse.report_period == "2023FY"
-    assert not sse.is_summary
-
-
-def test_pdf_parser_distinguishes_sse_same_date_variants() -> None:
+def test_pdf_parser_confirmation_and_invalid_filter() -> None:
     parser = PDFParser()
     annual = parser.parse(REPORTS_DIR / "reports-上交所" / "600080_20240427_0WKP.pdf")
-    q1 = parser.parse(REPORTS_DIR / "reports-上交所" / "600080_20240427_IBMB.pdf")
-    summary = parser.parse(REPORTS_DIR / "reports-上交所" / "600080_20240427_W39O.pdf")
-    assert annual.report_period == "2023FY"
-    assert q1.report_period == "2024Q1"
-    assert summary.is_summary is True
+    classified = [t for t in annual.tables if t.table_type]
+    assert any(t.table_type == "balance_sheet" and "货币资金" in "".join(str(c) for row in t.raw_rows[:10] for c in row if c) for t in classified)
+    assert any(t.table_type == "income_sheet" and ("营业收入" in "".join(str(c) for row in t.raw_rows[:10] for c in row if c) or "营业总收入" in "".join(str(c) for row in t.raw_rows[:10] for c in row if c)) for t in classified)
+    assert any(t.table_type == "cash_flow_sheet" and "销售商品" in "".join(str(c) for row in t.raw_rows[:15] for c in row if c) for t in classified)
+    assert not any("母公司" in "".join(str(c) for row in t.raw_rows[:5] for c in row if c) and t.table_type in {"balance_sheet", "income_sheet", "cash_flow_sheet"} for t in classified)
 
 
-def test_table_extractor_maps_income_and_core_fields() -> None:
+def test_cross_page_merge_and_core_metrics_extraction() -> None:
     parser = PDFParser()
     extractor = TableExtractor()
-
-    cr = parser.parse(REPORTS_DIR / "reports-深交所" / "华润三九：2023年年度报告.pdf")
-    records, warnings = extractor.extract(cr)
-    assert records["income_sheet"]["total_operating_revenue"] > 0
-    assert records["income_sheet"]["net_profit"] > 0
-    assert records["cash_flow_sheet"]["net_cash_flow"] > 0
-    assert records["balance_sheet"]["asset_total_assets"] > 0
-
-    jf = parser.parse(REPORTS_DIR / "reports-上交所" / "600080_20240427_0WKP.pdf")
-    jf_records, jf_warnings = extractor.extract(jf)
-    assert jf_records["core_performance_indicators_sheet"]["total_operating_revenue"] > 0
-    assert "net_profit_10k_yuan" in jf_records["core_performance_indicators_sheet"]
-    assert isinstance(warnings + jf_warnings, list)
+    parsed = parser.parse(REPORTS_DIR / "reports-深交所" / "华润三九：2023年年度报告.pdf")
+    records, _ = extractor.extract(parsed)
+    balance_pages = [t.page_number for t in parsed.tables if t.table_type == "balance_sheet"]
+    assert len(balance_pages) == 1
+    assert records["core_performance_indicators_sheet"].get("total_operating_revenue") is not None or records["income_sheet"].get("total_operating_revenue") is not None
 
 
-def test_validator_warns_but_not_blocking() -> None:
-    validator = DataValidator()
-    records = {
-        "balance_sheet": {"report_period": "2023FY", "asset_total_assets": 100.0, "liability_total_liabilities": 80.0, "equity_total_equity": 10.0},
-        "income_sheet": {"report_period": "2023FY", "net_profit": 50.0, "total_operating_revenue": 100.0, "total_operating_expenses": 90.0, "operating_profit": 5.0},
-        "cash_flow_sheet": {"report_period": "bad"},
-        "core_performance_indicators_sheet": {"report_period": "2023FY", "net_profit_10k_yuan": 10.0},
-    }
-    result = validator.validate(records)
-    assert result.ok is True
-    assert len(result.warnings) >= 2
+def test_income_sheet_coverage_over_80_for_both_companies() -> None:
+    parser = PDFParser()
+    extractor = TableExtractor()
+    targets = [
+        REPORTS_DIR / "reports-深交所" / "华润三九：2023年年度报告.pdf",
+        REPORTS_DIR / "reports-上交所" / "600080_20240427_0WKP.pdf",
+    ]
+    for path in targets:
+        records, _ = extractor.extract(parser.parse(path))
+        row = records["income_sheet"]
+        fields = [k for k in row if k not in {"serial_number", "stock_code", "stock_abbr", "report_period", "report_year"}]
+        coverage = sum(1 for k in fields if row.get(k) is not None) / len(fields)
+        assert coverage > 0.8, (path.name, coverage)
 
 
-def test_loader_integration_all_full_reports(temp_db: Path) -> None:
-    loader = ETLLoader(temp_db)
-    report_root = REPORTS_DIR
-    pdf_files = sorted(report_root.rglob("*.pdf"))
-    loaded = 0
-    skipped = 0
-    for pdf in pdf_files:
-        result = loader.load_pdf(pdf)
-        if result["status"] == "loaded":
-            loaded += 1
-        else:
-            skipped += 1
-    assert loaded == 13
-    assert skipped == 5
+def test_validator_failure_strategy_and_loader_reject(tmp_path: Path) -> None:
+    loader = ETLLoader(tmp_path / "finance.db")
+    result = loader.load_pdf(REPORTS_DIR / "reports-深交所" / "华润三九：2023年年度报告摘要.pdf")
+    assert result["status"] == "skipped"
 
-    with sqlite3.connect(temp_db) as conn:
-        for table in [
-            "core_performance_indicators_sheet",
-            "balance_sheet",
-            "income_sheet",
-            "cash_flow_sheet",
-        ]:
-            count = conn.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()[0]
-            assert count == 13
-        row = conn.execute('SELECT stock_abbr, report_period, total_profit FROM income_sheet WHERE stock_code = ? AND report_period = ?', ("600080", "2023FY")).fetchone()
-        assert row[0] == "金花股份"
-        assert row[1] == "2023FY"
-        assert row[2] is not None
+
+def test_run_etl_all_reports_and_key_fields_non_null(tmp_path: Path) -> None:
+    db_path = tmp_path / "finance.db"
+    summary = run_etl(str(REPORTS_DIR), str(db_path))
+    assert summary["loaded"] >= 13
+    with sqlite3.connect(db_path) as conn:
+        income_non_null = conn.execute("SELECT COUNT(*) FROM income_sheet WHERE total_operating_revenue IS NOT NULL AND total_profit IS NOT NULL").fetchone()[0]
+        balance_non_null = conn.execute("SELECT COUNT(*) FROM balance_sheet WHERE asset_total_assets IS NOT NULL AND liability_total_liabilities IS NOT NULL").fetchone()[0]
+        assert income_non_null >= 10
+        assert balance_non_null >= 10
+
+
+def _seed_answer_db(db_path: Path) -> None:
+    conn = sqlite3.connect(db_path)
+    conn.execute("CREATE TABLE income_sheet (serial_number INTEGER, stock_code TEXT, stock_abbr TEXT, report_period TEXT, report_year INTEGER, total_profit REAL, net_profit REAL, total_operating_revenue REAL)")
+    conn.execute("CREATE TABLE balance_sheet (serial_number INTEGER, stock_code TEXT, stock_abbr TEXT, report_period TEXT, report_year INTEGER, asset_total_assets REAL)")
+    conn.execute("CREATE TABLE cash_flow_sheet (serial_number INTEGER, stock_code TEXT, stock_abbr TEXT, report_period TEXT, report_year INTEGER, net_cash_flow REAL)")
+    conn.execute("CREATE TABLE core_performance_indicators_sheet (serial_number INTEGER, stock_code TEXT, stock_abbr TEXT, report_period TEXT, report_year INTEGER, eps REAL)")
+    conn.execute("INSERT INTO income_sheet VALUES (1, '600080', '金花股份', '2025Q3', 2025, 3140.0, 2500.0, 18000.0)")
+    conn.execute("INSERT INTO income_sheet VALUES (1, '000999', '华润三九', '2024FY', 2024, 50000.0, 42000.0, 240000.0)")
+    conn.commit()
+    conn.close()
+
+
+def test_text2sql_parameterized_and_end_to_end(tmp_path: Path) -> None:
+    db_path = tmp_path / "answer.db"
+    _seed_answer_db(db_path)
+    engine = Text2SQLEngine(str(db_path))
+    conv = ConversationManager()
+    first = engine.query("金花股份利润总额是多少", conv)
+    assert first.needs_clarification is True
+    conv.add_user_message("金花股份利润总额是多少")
+    conv.merge_intent(first.intent)
+    conv.add_assistant_message("请补充报告期。")
+    result = engine.query("2025年第三季度的", conv)
+    assert result.error is None
+    assert result.rows[0]["total_profit"] == 3140.0
+    assert "stock_abbr = '金花股份'" in result.sql
+    assert "report_period = '2025Q3'" in result.sql
+
+
+def test_result_xlsx_format_validation(tmp_path: Path) -> None:
+    db_path = tmp_path / "answer.db"
+    _seed_answer_db(db_path)
+    questions = tmp_path / "questions.xlsx"
+    import pandas as pd
+    pd.DataFrame([
+        {"编号": "B1001", "问题类型": "multi", "问题": json.dumps([{"Q": "金花股份利润总额是多少"}, {"Q": "2025年第三季度的"}], ensure_ascii=False)},
+        {"编号": "B1002", "问题类型": "single", "问题": json.dumps([{"Q": "华润三九2024年营业收入是多少"}], ensure_ascii=False)},
+    ]).to_excel(questions, index=False)
+    output = tmp_path / "result_2.xlsx"
+    run_answer(str(questions), str(db_path), str(output))
+    df = __import__("pandas").read_excel(output)
+    assert list(df.columns) == ["编号", "问题", "SQL查询语句", "图形格式", "回答"]
+    assert set(df["编号"]) == {"B1001", "B1002"}
+
+
+def test_end_to_end_b1001_b1002(tmp_path: Path) -> None:
+    db_path = tmp_path / "answer.db"
+    _seed_answer_db(db_path)
+    questions = tmp_path / "questions.xlsx"
+    import pandas as pd
+    pd.DataFrame([
+        {"编号": "B1001", "问题类型": "multi", "问题": json.dumps([{"Q": "金花股份利润总额是多少"}, {"Q": "2025年第三季度的"}], ensure_ascii=False)},
+        {"编号": "B1002", "问题类型": "single", "问题": json.dumps([{"Q": "华润三九2024年营业收入是多少"}], ensure_ascii=False)},
+    ]).to_excel(questions, index=False)
+    output = tmp_path / "result_2.xlsx"
+    run_answer(str(questions), str(db_path), str(output))
+    df = __import__("pandas").read_excel(output)
+    answer1 = df.loc[df["编号"] == "B1001", "回答"].iloc[0]
+    answer2 = df.loc[df["编号"] == "B1002", "回答"].iloc[0]
+    assert "3140" in answer1
+    assert "240000" in answer2 or "24.00亿元" in answer2

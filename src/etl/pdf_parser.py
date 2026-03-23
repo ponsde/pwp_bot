@@ -33,6 +33,21 @@ TABLE_TITLE_PATTERNS = {
     "cash_flow_sheet": ["合并现金流量表", "合并年初到报告期末现金流量表"],
 }
 
+CONFIRM_KEYWORDS = {
+    "balance_sheet": ("货币资金",),
+    "income_sheet": ("营业收入", "营业总收入"),
+    "cash_flow_sheet": ("销售商品", "销售商品、提供劳务收到的现金", "销售商品及提供劳务收到的现金"),
+    "core_performance_indicators_sheet": ("基本每股收益", "营业收入", "净利润"),
+}
+
+INVALID_TABLE_KEYWORDS = (
+    "母公司资产负债表",
+    "母公司利润表",
+    "母公司现金流量表",
+    "母公司所有者权益变动表",
+    "母公司股东权益变动表",
+)
+
 
 @dataclass
 class ParsedTable:
@@ -79,6 +94,7 @@ class PDFParser:
             else:
                 page_indices = list(range(min(len(pdf.pages), 40)))
             seen = set()
+            previous_text = ""
             for page_idx in page_indices:
                 if page_idx in seen:
                     continue
@@ -91,8 +107,9 @@ class PDFParser:
                 for raw in raw_tables:
                     parsed = ParsedTable(page_number=idx, raw_rows=raw, text=text)
                     parsed.title = self._guess_title(text)
-                    parsed.table_type = self._classify_table(parsed)
+                    parsed.table_type = self._classify_table(parsed, previous_text=previous_text)
                     tables.append(parsed)
+                previous_text = text
         return ParsedPDF(file_path=path, tables=self._merge_cross_page_tables(tables), page_texts=page_texts, **meta)
 
     def _parse_szse_meta(self, path: Path) -> dict[str, Any]:
@@ -167,38 +184,31 @@ class PDFParser:
                     return title
         return None
 
-    def _classify_table(self, table: ParsedTable) -> str | None:
-        # Use table's own first few rows to classify, not the whole page text
+    def _classify_table(self, table: ParsedTable, previous_text: str = "") -> str | None:
         table_header = self._table_first_rows_text(table)
-        # Direct match on table content first
-        if "合并资产负债表" in table_header:
-            return "balance_sheet"
-        if "合并利润表" in table_header or "合并年初到报告期末利润表" in table_header:
-            return "income_sheet"
-        if "合并现金流量表" in table_header or "合并年初到报告期末现金流量表" in table_header:
-            return "cash_flow_sheet"
-        if any(p in table_header for p in TABLE_TITLE_PATTERNS["core_performance_indicators_sheet"]):
-            return "core_performance_indicators_sheet"
-        # Heuristic: check first non-empty cell content for known patterns
-        first_cells = self._table_first_cells(table)
-        if any(kw in first_cells for kw in ["一、营业总收入", "营业收入", "营业总收入"]):
-            return "income_sheet"
-        if any(kw in first_cells for kw in ["流动资产", "货币资金", "资产总计"]):
-            return "balance_sheet"
-        if any(kw in first_cells for kw in ["经营活动产生的现金", "销售商品、提供劳务收到的现金"]):
-            return "cash_flow_sheet"
-        if any(kw in first_cells for kw in ["基本每股收益", "营业收入", "每股收益"]):
-            return "core_performance_indicators_sheet"
-        # Fallback to page text (less precise, but catches titled tables)
-        page_text = (table.title or "") + "\n" + table.text[:500]
-        for table_type, patterns in TABLE_TITLE_PATTERNS.items():
-            if any(p in page_text for p in patterns):
+        full_context = "\n".join(filter(None, [table_header, table.title or "", table.text[:1000], previous_text[-400:]]))
+        compact_context = self._compact(full_context)
+
+        if any(keyword in compact_context for keyword in map(self._compact, INVALID_TABLE_KEYWORDS)):
+            return None
+
+        candidates: list[str] = []
+        if any(token in table_header for token in TABLE_TITLE_PATTERNS["core_performance_indicators_sheet"]):
+            candidates.append("core_performance_indicators_sheet")
+        if "合并资产负债表" in compact_context or any(token in table_header for token in ("货币资金", "资产总计", "流动资产")):
+            candidates.append("balance_sheet")
+        if any(token in compact_context for token in ("合并利润表", "合并年初到报告期末利润表")) or any(token in table_header for token in ("营业收入", "营业总收入", "利润总额", "净利润")):
+            candidates.append("income_sheet")
+        if any(token in compact_context for token in ("合并现金流量表", "合并年初到报告期末现金流量表")) or any(token in table_header for token in ("销售商品", "经营活动产生的现金流量净额", "现金及现金等价物净增加额")):
+            candidates.append("cash_flow_sheet")
+
+        for table_type in dict.fromkeys(candidates):
+            if self._has_confirmation_keyword(table_type, compact_context):
                 return table_type
         return None
 
     @staticmethod
     def _table_first_rows_text(table: ParsedTable) -> str:
-        """Get text from first 3 rows of table for classification."""
         parts = []
         for row in table.raw_rows[:3]:
             for cell in row:
@@ -207,15 +217,11 @@ class PDFParser:
         return " ".join(parts)
 
     @staticmethod
-    def _table_first_cells(table: ParsedTable) -> str:
-        """Get first non-empty cell from each of first 5 rows."""
-        parts = []
-        for row in table.raw_rows[:5]:
-            for cell in row:
-                if cell and str(cell).strip():
-                    parts.append(str(cell).replace("\n", "").strip())
-                    break
-        return " ".join(parts)
+    def _compact(text: str) -> str:
+        return re.sub(r"\s+", "", text)
+
+    def _has_confirmation_keyword(self, table_type: str, compact_context: str) -> bool:
+        return any(self._compact(keyword) in compact_context for keyword in CONFIRM_KEYWORDS.get(table_type, ()))
 
     def _merge_cross_page_tables(self, tables: list[ParsedTable]) -> list[ParsedTable]:
         merged: list[ParsedTable] = []
@@ -225,17 +231,27 @@ class PDFParser:
                 continue
             prev = merged[-1]
             same_page = table.page_number == prev.page_number
-            adjacent_page = 1 <= table.page_number - prev.page_number <= 2
-            # Same type, different page, adjacent → merge (cross-page continuation)
-            if table.table_type and table.table_type == prev.table_type and adjacent_page and not same_page:
+            adjacent_page = table.page_number - prev.page_number == 1
+            if same_page:
+                merged.append(table)
+                continue
+            if prev.table_type and table.table_type == prev.table_type and adjacent_page:
                 prev.raw_rows.extend(table.raw_rows)
                 prev.text += "\n" + table.text
                 continue
-            # Untyped table on adjacent page after a typed table → likely continuation
-            if table.table_type is None and prev.table_type and adjacent_page and not same_page:
+            if prev.table_type and table.table_type is None and adjacent_page and not self._has_distinct_confirmation(prev.table_type, table):
                 table.table_type = prev.table_type
                 prev.raw_rows.extend(table.raw_rows)
                 prev.text += "\n" + table.text
                 continue
             merged.append(table)
         return merged
+
+    def _has_distinct_confirmation(self, table_type: str, table: ParsedTable) -> bool:
+        context = self._compact(self._table_first_rows_text(table))
+        for other_type, keywords in CONFIRM_KEYWORDS.items():
+            if other_type == table_type:
+                continue
+            if any(self._compact(keyword) in context for keyword in keywords):
+                return True
+        return False
