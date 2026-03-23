@@ -110,7 +110,7 @@ ALIASES = {
 }
 
 PREFIX_RE = re.compile(r"^(?:[一二三四五六七八九十]+、|[（(][一二三四五六七八九十\d]+[)）]|\d+[\.、]|[加减]：|其中[:：])")
-BRACKET_NOTE_RE = re.compile(r"([（(](?:亏损|损失|净亏损).*?[)）])|([（(].*?[)）]$)")
+BRACKET_NOTE_RE = re.compile(r"[（(][^）)]*[)）]")
 UNIT_RE = re.compile(r"单位[：:]\s*(?:人民币)?(元|万元|千元|百万元)")
 NUMERIC_RE = re.compile(r"-?\d+(?:,\d{3})*(?:\.\d+)?%?")
 
@@ -337,7 +337,8 @@ class TableExtractor:
 
     def _convert_value(self, value: str, meta: FieldMeta, source_unit: str | None) -> float:
         numeric = self._parse_number(value)
-        source_unit = source_unit or ("元" if abs(numeric) >= 100000 else "万元")
+        # Default to 元 when unit not detected (most PDF financial tables use 元)
+        source_unit = source_unit or "元"
         if meta.unit == "万元":
             if source_unit == "元":
                 return round(numeric / 10000, 2)

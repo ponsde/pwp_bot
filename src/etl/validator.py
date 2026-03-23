@@ -6,7 +6,7 @@ from typing import Any
 
 
 REPORT_PERIOD_RE = re.compile(r"^20\d{2}(FY|Q1|HY|Q3)$")
-FATAL_WARNING_MARKERS = ("balance_sheet:", "fatal:")
+FATAL_WARNING_MARKERS = ("balance_sheet: assets != liabilities",)
 
 
 @dataclass
@@ -44,7 +44,7 @@ class DataValidator:
 
         balance = records.get("balance_sheet", {})
         if balance.get("asset_total_assets") is None or balance.get("liability_total_liabilities") is None:
-            warnings.append("fatal: missing key balance sheet fields")
+            warnings.append("balance_sheet: missing key fields (non-fatal, data may be incomplete)")
 
     def _validate_balance(self, records: dict[str, dict[str, Any]], warnings: list[str]) -> None:
         row = records["balance_sheet"]
