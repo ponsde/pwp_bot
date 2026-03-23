@@ -37,7 +37,7 @@ CONFIRM_KEYWORDS = {
     "balance_sheet": ("货币资金",),
     "income_sheet": ("营业收入", "营业总收入"),
     "cash_flow_sheet": ("销售商品", "销售商品、提供劳务收到的现金", "销售商品及提供劳务收到的现金"),
-    "core_performance_indicators_sheet": ("基本每股收益", "营业收入", "净利润"),
+    "core_performance_indicators_sheet": ("基本每股收益", "每股收益", "营业收入", "净利润", "归属于上市公司股东的净利润"),
 }
 
 INVALID_TABLE_KEYWORDS = (
@@ -193,12 +193,22 @@ class PDFParser:
             return None
 
         candidates: list[str] = []
+        core_indicator_tokens = (
+            "基本每股收益",
+            "每股收益",
+            "加权平均净资产收益率",
+            "净资产收益率",
+            "归属于上市公司股东的净利润",
+            "归属于上市公司股东",
+            "经营活动产生的现金流量净额",
+        )
         # Core performance: check page text AND table body for title keywords
         if any(token in table_header for token in TABLE_TITLE_PATTERNS["core_performance_indicators_sheet"]):
-            candidates.append("core_performance_indicators_sheet")
+            if any(token in compact_body for token in map(self._compact, core_indicator_tokens)):
+                candidates.append("core_performance_indicators_sheet")
         elif any(self._compact(token) in compact_context for token in ("主要会计数据和财务指标", "主要会计数据", "主要财务指标")):
             # Page text mentions it — check if table body has core indicators
-            if any(token in compact_body for token in ("基本每股收益", "每股收益", "加权平均净资产收益率")):
+            if any(token in compact_body for token in map(self._compact, core_indicator_tokens)):
                 candidates.append("core_performance_indicators_sheet")
         # Three main consolidated statements: require "合并" in context for annual/semi-annual
         if "合并资产负债表" in compact_context:
@@ -249,26 +259,36 @@ class PDFParser:
 
     def _merge_cross_page_tables(self, tables: list[ParsedTable]) -> list[ParsedTable]:
         merged: list[ParsedTable] = []
+        # Track the last page that was merged into each group, so multi-page
+        # tables (e.g., balance sheet spanning pages 59-62) merge correctly.
+        last_merged_page: int = 0
         for table in tables:
             if not merged:
                 merged.append(table)
+                last_merged_page = table.page_number
                 continue
             prev = merged[-1]
             same_page = table.page_number == prev.page_number
-            adjacent_page = table.page_number - prev.page_number == 1
+            # Allow gap of 1 page (e.g., page 59 → 61 when page 60 had no tables,
+            # or when page 60's table was already merged)
+            near_page = table.page_number - last_merged_page <= 2 and table.page_number > prev.page_number
             if same_page:
                 merged.append(table)
+                last_merged_page = table.page_number
                 continue
-            if prev.table_type and table.table_type == prev.table_type and adjacent_page:
+            if prev.table_type and table.table_type == prev.table_type and near_page:
                 prev.raw_rows.extend(table.raw_rows)
                 prev.text += "\n" + table.text
+                last_merged_page = table.page_number
                 continue
-            if prev.table_type and table.table_type is None and adjacent_page and not self._has_distinct_confirmation(prev.table_type, table):
+            if prev.table_type and table.table_type is None and near_page and not self._has_distinct_confirmation(prev.table_type, table):
                 table.table_type = prev.table_type
                 prev.raw_rows.extend(table.raw_rows)
                 prev.text += "\n" + table.text
+                last_merged_page = table.page_number
                 continue
             merged.append(table)
+            last_merged_page = table.page_number
         return merged
 
     def _has_distinct_confirmation(self, table_type: str, table: ParsedTable) -> bool:

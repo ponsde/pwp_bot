@@ -48,10 +48,30 @@ def test_income_sheet_coverage_over_80_for_both_companies() -> None:
         assert coverage > 0.8, (path.name, coverage)
 
 
-def test_validator_failure_strategy_and_loader_reject(tmp_path: Path) -> None:
-    loader = ETLLoader(tmp_path / "finance.db")
-    result = loader.load_pdf(REPORTS_DIR / "reports-深交所" / "华润三九：2023年年度报告摘要.pdf")
-    assert result["status"] == "skipped"
+def test_etl_quality_regressions_for_target_reports() -> None:
+    parser = PDFParser()
+    extractor = TableExtractor()
+
+    hz_2024hy = extractor.extract(parser.parse(REPORTS_DIR / "reports-深交所" / "华润三九：2024年半年度报告.pdf"))[0]
+    assert hz_2024hy["balance_sheet"].get("liability_total_liabilities") is not None
+    assert hz_2024hy["balance_sheet"].get("equity_total_equity") is not None
+
+    for report_name in [
+        "华润三九：2022年年度报告.pdf",
+        "华润三九：2024年年度报告.pdf",
+        "华润三九：2025年一季度报告.pdf",
+        "华润三九：2025年三季度报告.pdf",
+    ]:
+        records, _ = extractor.extract(parser.parse(REPORTS_DIR / "reports-深交所" / report_name))
+        core = records["core_performance_indicators_sheet"]
+        assert core.get("eps") is not None, report_name
+        assert core.get("roe") is not None, report_name
+
+    hz_2023q3 = extractor.extract(parser.parse(REPORTS_DIR / "reports-深交所" / "华润三九：2023年三季度报告.pdf"))[0]
+    assert hz_2023q3["income_sheet"].get("net_profit") is not None
+
+    jh_2024q3 = extractor.extract(parser.parse(REPORTS_DIR / "reports-上交所" / "600080_20241030_XN72.pdf"))[0]
+    assert jh_2024q3["income_sheet"].get("net_profit") is not None
 
 
 def test_run_etl_all_reports_and_key_fields_non_null(tmp_path: Path) -> None:

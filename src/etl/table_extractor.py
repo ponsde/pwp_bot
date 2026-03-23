@@ -13,6 +13,8 @@ INCOME_ALIASES = {
     "净利润": "net_profit",
     "归属于母公司所有者的净利润": "net_profit",
     "归属于母公司股东的净利润": "net_profit",
+    "归属于上市公司股东的净利润": "net_profit",
+    "归属于上市公司股东": "net_profit",
     "营业收入": "total_operating_revenue",
     "营业总收入": "total_operating_revenue",
     "营业成本": "operating_expense_cost_of_sales",
@@ -76,23 +78,29 @@ CASHFLOW_ALIASES = {
 
 CORE_ALIASES = {
     "基本每股收益": "eps",
+    "基本每股收": "eps",
     "每股收益": "eps",
     "营业收入": "total_operating_revenue",
     "营业总收入": "total_operating_revenue",
     "归属于上市公司股东的净利润": "net_profit_10k_yuan",
+    "归属于上市公司股东": "net_profit_10k_yuan",
     "归属于母公司所有者的净利润": "net_profit_10k_yuan",
     "归属于母公司股东的净利润": "net_profit_10k_yuan",
     "归属母公司净利润": "net_profit_10k_yuan",
     "净利润": "net_profit_10k_yuan",
     "归属于上市公司股东的扣除非经常性损益的净利润": "net_profit_excl_non_recurring",
+    "归属于上市公司股东的扣除非经常": "net_profit_excl_non_recurring",
     "扣除非经常性损益后归属于母公司所有者的净利润": "net_profit_excl_non_recurring",
     "扣非净利润": "net_profit_excl_non_recurring",
     "归属于上市公司股东的每股净资产": "net_asset_per_share",
     "每股净资产": "net_asset_per_share",
     "加权平均净资产收益率": "roe",
+    "加权平均净资产收益": "roe",
+    "加权平均净": "roe",
     "净资产收益率": "roe",
     "每股经营现金流量": "operating_cf_per_share",
     "每股经营活动产生的现金流量净额": "operating_cf_per_share",
+    "经营活动产生的现金流量净额": "operating_cf_per_share",
     "毛利率": "gross_profit_margin",
     "销售毛利率": "gross_profit_margin",
     "净利率": "net_profit_margin",
@@ -134,8 +142,6 @@ class TableExtractor:
         }
         warnings: list[str] = []
         page_units = [self._detect_text_unit(text) for text in parsed_pdf.page_texts]
-        page_to_prev_record: dict[tuple[str, int], dict[str, Any]] = {}
-
         for table in parsed_pdf.tables:
             if not table.table_type:
                 continue
@@ -144,7 +150,6 @@ class TableExtractor:
                 self._extract_core_metrics(table, records[table.table_type], parsed_pdf.report_period, source_unit, warnings)
             else:
                 self._extract_statement_table(table, table.table_type, records[table.table_type], source_unit, warnings)
-            page_to_prev_record[(table.table_type, table.page_number)] = self._snapshot_numeric_records(records[table.table_type])
 
         self._compute_derived_fields(records)
         return records, warnings
@@ -158,13 +163,18 @@ class TableExtractor:
         warnings: list[str],
     ) -> None:
         aliases = ALIASES[table_type]
+        pending_label = ""
         for row in table.raw_rows:
             if not row:
                 continue
             cells = [self._clean_text(cell) for cell in row if cell not in (None, "")]
             if len(cells) < 2:
+                # Single-cell row: could be a split label, accumulate for next row
+                if cells and not self._find_first_numeric(cells):
+                    pending_label = (pending_label + cells[0]).strip()
                 continue
-            label = self._normalize_label(cells[0])
+            label = self._normalize_label(pending_label + cells[0])
+            pending_label = ""
             if not label or label in {"项目", "科目", "资产", "负债", "流动资产", "非流动资产", "流动负债", "非流动负债"}:
                 continue
             field = aliases.get(label)
@@ -172,6 +182,8 @@ class TableExtractor:
                 continue
             value = self._find_first_numeric(cells[1:])
             if value is None:
+                # No numeric value — label may be split across rows
+                pending_label = label
                 continue
             converted = self._convert_value(value, self.meta_by_field[table_type][field], source_unit)
             # First-wins: don't overwrite values already extracted from an earlier (usually more authoritative) table
@@ -190,23 +202,52 @@ class TableExtractor:
         header = self._extract_header_cells(table)
         year = report_period[:4]
         period_key = self._infer_core_period_key(report_period)
-        for row in table.raw_rows:
-            if not row:
+        rows = [
+            [self._clean_text(cell) if cell not in (None, "") else "" for cell in row]
+            for row in table.raw_rows
+            if row
+        ]
+        idx = 0
+        while idx < len(rows):
+            row = rows[idx]
+            label, inline_value = self._extract_statement_label_and_value(row)
+            look_ahead = idx + 1
+            while label and aliases.get(label) is None and look_ahead < len(rows):
+                next_label, next_inline_value = self._extract_statement_label_and_value(rows[look_ahead], label)
+                if not next_label or next_inline_value is not None:
+                    label = next_label or label
+                    inline_value = next_inline_value if next_inline_value is not None else inline_value
+                    idx = look_ahead
+                    break
+                label = next_label
+                look_ahead += 1
+                idx = look_ahead - 1
+            if not label:
+                idx += 1
                 continue
-            normalized_row = [self._clean_text(cell) if cell not in (None, "") else "" for cell in row]
-            cells = [cell for cell in normalized_row if cell]
-            if len(cells) < 2:
-                continue
-            label = self._normalize_label(cells[0])
             field = aliases.get(label)
             if not field:
+                idx += 1
                 continue
-            value = self._select_core_value(normalized_row, header, period_key, year)
+            value = self._select_core_value(row, header, period_key, year)
+            if value is None:
+                value = inline_value
+            if value is None and idx + 1 < len(rows):
+                next_label, next_inline_value = self._extract_statement_label_and_value(rows[idx + 1], label)
+                if aliases.get(next_label) == field:
+                    value = self._select_core_value(rows[idx + 1], header, period_key, year) or next_inline_value
+                    idx += 1
             if value is not None and field not in target:
                 target[field] = self._convert_value(value, self.meta_by_field["core_performance_indicators_sheet"][field], source_unit)
+            idx += 1
 
     def _compute_derived_fields(self, records: dict[str, dict[str, Any]]) -> None:
         balance = records["balance_sheet"]
+        core = records["core_performance_indicators_sheet"]
+        # NOTE: eps cannot be reliably derived without share count data.
+        # Removed broken formula (was: net_profit_10k_yuan * 10000 / income_net_profit).
+        if core.get("roe") is None and core.get("net_profit_10k_yuan") is not None and balance.get("equity_total_equity") not in (None, 0):
+            core["roe"] = round(core["net_profit_10k_yuan"] / balance["equity_total_equity"] * 100, 4)
         if balance.get("asset_total_assets") is not None and balance.get("liability_total_liabilities") is not None:
             total_assets = balance["asset_total_assets"]
             total_liabilities = balance["liability_total_liabilities"]
@@ -225,11 +266,8 @@ class TableExtractor:
             ]:
                 numerator_value = cash.get(numerator)
                 if numerator_value is not None:
-                    cash[ratio_field] = round((numerator_value * 10000 / net_cash_flow) * 100, 4)
-
-    @staticmethod
-    def _snapshot_numeric_records(record: dict[str, Any]) -> dict[str, Any]:
-        return {k: v for k, v in record.items() if isinstance(v, (int, float))}
+                    # Both numerator and denominator are in the same unit (万元 after conversion)
+                    cash[ratio_field] = round((numerator_value / net_cash_flow) * 100, 4)
 
     @staticmethod
     def _normalize_label(label: str) -> str:
@@ -304,16 +342,34 @@ class TableExtractor:
         return tuple(candidates)
 
     def _extract_header_cells(self, table: ParsedTable) -> list[str]:
-        for row in table.raw_rows[:4]:
+        for row in table.raw_rows[:12]:
             normalized = [self._clean_text(cell) if cell not in (None, "") else "" for cell in row]
             non_empty = [cell for cell in normalized if cell]
             if len(non_empty) >= 2 and any(self._looks_like_header_cell(cell) for cell in non_empty[1:]):
                 return normalized
         return []
 
+    def _extract_statement_label_and_value(self, row: list[str], pending_label: str = "") -> tuple[str, str | None]:
+        label_parts: list[str] = []
+        numeric_start: int | None = None
+        for idx, cell in enumerate(row):
+            if not cell:
+                continue
+            if self._is_numeric_text(cell):
+                numeric_start = idx
+                break
+            if cell in {"—", "--", "-"}:
+                continue
+            label_parts.append(cell)
+        label = self._normalize_label((pending_label + "".join(label_parts)).strip())
+        value = None
+        if numeric_start is not None:
+            value = self._find_first_numeric([cell for cell in row[numeric_start:] if cell])
+        return label, value
+
     @staticmethod
     def _looks_like_header_cell(text: str) -> bool:
-        return any(token in text for token in ("季度", "年度", "本报告期", "本期", "期末", "月份", "年"))
+        return any(token in text for token in ("季度", "年度", "本报告期", "本期", "期末", "月份", "年", "同比", "增减"))
 
     def _detect_source_unit(self, table: ParsedTable, page_units: list[str | None]) -> str | None:
         text = "\n".join(filter(None, [table.title or "", table.text, self._flatten_rows(table.raw_rows)]))
