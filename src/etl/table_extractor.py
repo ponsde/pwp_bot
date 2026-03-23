@@ -12,66 +12,145 @@ BASE_COLUMNS = {"serial_number", "stock_code", "stock_abbr", "report_period", "r
 
 ALIASES = {
     "income_sheet": {
+        # net_profit - 净利润（多种序号前缀和括号变体）
         "净利润": "net_profit",
+        "净利润总额": "net_profit",
+        # net_profit_yoy_growth
+        "净利润同比增长": "net_profit_yoy_growth",
+        # other_income
         "其他收益": "other_income",
+        # total_operating_revenue
         "营业总收入": "total_operating_revenue",
         "营业收入": "total_operating_revenue",
+        # operating_revenue_yoy_growth
+        "营业总收入同比增长": "operating_revenue_yoy_growth",
+        "营业收入同比增长": "operating_revenue_yoy_growth",
+        # operating_expense_cost_of_sales
         "营业成本": "operating_expense_cost_of_sales",
+        # operating_expense_selling_expenses
         "销售费用": "operating_expense_selling_expenses",
+        # operating_expense_administrative_expenses
         "管理费用": "operating_expense_administrative_expenses",
+        # operating_expense_financial_expenses
         "财务费用": "operating_expense_financial_expenses",
+        # operating_expense_rnd_expenses
         "研发费用": "operating_expense_rnd_expenses",
+        "研发经费": "operating_expense_rnd_expenses",
+        # operating_expense_taxes_and_surcharges
         "税金及附加": "operating_expense_taxes_and_surcharges",
+        "营业税金及附加": "operating_expense_taxes_and_surcharges",
+        # total_operating_expenses
         "营业总成本": "total_operating_expenses",
+        "营业总支出": "total_operating_expenses",
+        # operating_profit
         "营业利润": "operating_profit",
+        # total_profit
         "利润总额": "total_profit",
+        # asset_impairment_loss
         "资产减值损失": "asset_impairment_loss",
+        # credit_impairment_loss
         "信用减值损失": "credit_impairment_loss",
     },
     "balance_sheet": {
+        # asset_cash_and_cash_equivalents
         "货币资金": "asset_cash_and_cash_equivalents",
+        # asset_accounts_receivable
         "应收账款": "asset_accounts_receivable",
+        "应收帐款": "asset_accounts_receivable",
+        # asset_inventory
         "存货": "asset_inventory",
+        # asset_trading_financial_assets
         "交易性金融资产": "asset_trading_financial_assets",
+        # asset_construction_in_progress
         "在建工程": "asset_construction_in_progress",
+        # asset_total_assets
         "资产总计": "asset_total_assets",
+        "资产合计": "asset_total_assets",
+        "总资产": "asset_total_assets",
+        "资产总额": "asset_total_assets",
         "负债和所有者权益总计": "asset_total_assets",
+        "负债及所有者权益总计": "asset_total_assets",
+        # liability_accounts_payable
         "应付账款": "liability_accounts_payable",
+        "应付帐款": "liability_accounts_payable",
+        # liability_advance_from_customers
         "预收款项": "liability_advance_from_customers",
+        "预收账款": "liability_advance_from_customers",
+        # liability_total_liabilities
         "负债合计": "liability_total_liabilities",
+        "总负债": "liability_total_liabilities",
+        "负债总计": "liability_total_liabilities",
+        # liability_contract_liabilities
         "合同负债": "liability_contract_liabilities",
+        # liability_short_term_loans
         "短期借款": "liability_short_term_loans",
+        # equity_unappropriated_profit
         "未分配利润": "equity_unappropriated_profit",
+        # equity_total_equity
         "所有者权益合计": "equity_total_equity",
         "股东权益合计": "equity_total_equity",
-        "所有者权益（或股东权益）合计": "equity_total_equity",
+        "归属于母公司所有者权益合计": "equity_total_equity",
+        "归属于母公司股东权益合计": "equity_total_equity",
     },
     "cash_flow_sheet": {
+        # net_cash_flow (元)
         "现金及现金等价物净增加额": "net_cash_flow",
-        "五、现金及现金等价物净增加额": "net_cash_flow",
+        "现金及现金等价物的净增加额": "net_cash_flow",
+        # operating_cf_net_amount
         "经营活动产生的现金流量净额": "operating_cf_net_amount",
+        # operating_cf_cash_from_sales
         "销售商品、提供劳务收到的现金": "operating_cf_cash_from_sales",
+        "销售商品及提供劳务收到的现金": "operating_cf_cash_from_sales",
+        "销售商品提供劳务收到的现金": "operating_cf_cash_from_sales",
+        # investing_cf_net_amount
         "投资活动产生的现金流量净额": "investing_cf_net_amount",
+        # investing_cf_cash_for_investments
         "投资支付的现金": "investing_cf_cash_for_investments",
+        # investing_cf_cash_from_investment_recovery
         "收回投资收到的现金": "investing_cf_cash_from_investment_recovery",
+        "收到的投资回收现金": "investing_cf_cash_from_investment_recovery",
+        "收回投资所得现金": "investing_cf_cash_from_investment_recovery",
+        "收回投资所收到的现金": "investing_cf_cash_from_investment_recovery",
+        # financing_cf_cash_from_borrowing
         "取得借款收到的现金": "financing_cf_cash_from_borrowing",
+        # financing_cf_cash_for_debt_repayment
         "偿还债务支付的现金": "financing_cf_cash_for_debt_repayment",
+        # financing_cf_net_amount
         "筹资活动产生的现金流量净额": "financing_cf_net_amount",
     },
     "core_performance_indicators_sheet": {
-        "基本每股收益（元/股）": "eps",
+        # eps (元)
         "基本每股收益": "eps",
+        "每股收益": "eps",
+        # total_operating_revenue (万元)
         "营业收入": "total_operating_revenue",
         "营业总收入": "total_operating_revenue",
+        # net_profit_10k_yuan (万元)
         "归属于上市公司股东的净利润": "net_profit_10k_yuan",
+        "归属母公司所有者净利润": "net_profit_10k_yuan",
+        "归属母公司所有者的净利润": "net_profit_10k_yuan",
+        "归属母公司净利润": "net_profit_10k_yuan",
+        "净利润": "net_profit_10k_yuan",
+        # net_profit_excl_non_recurring (万元)
         "归属于上市公司股东的扣除非经常性损益的净利润": "net_profit_excl_non_recurring",
+        "扣除非经常性损益后归属于母公司所有者的净利润": "net_profit_excl_non_recurring",
+        "扣非净利润": "net_profit_excl_non_recurring",
+        # net_asset_per_share (元)
         "归属于上市公司股东的每股净资产": "net_asset_per_share",
         "每股净资产": "net_asset_per_share",
+        # roe (%)
         "加权平均净资产收益率": "roe",
+        "净资产收益率": "roe",
+        # operating_cf_per_share (元)
         "每股经营现金流量": "operating_cf_per_share",
         "每股经营活动产生的现金流量净额": "operating_cf_per_share",
+        # gross_profit_margin (%)
         "毛利率": "gross_profit_margin",
+        "销售毛利率": "gross_profit_margin",
+        # net_profit_margin (%)
         "净利率": "net_profit_margin",
+        "销售净利率": "net_profit_margin",
+        # roe_weighted_excl_non_recurring (%)
         "扣除非经常性损益后的加权平均净资产收益率": "roe_weighted_excl_non_recurring",
     },
 }
