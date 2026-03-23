@@ -183,24 +183,42 @@ class PDFParser:
 
     def _classify_table(self, table: ParsedTable, previous_text: str = "") -> str | None:
         table_header = self._table_first_rows_text(table)
+        # Include more rows for tables with sparse headers (e.g., core performance)
+        table_body = self._table_rows_text(table, max_rows=12)
         full_context = "\n".join(filter(None, [table_header, table.title or "", table.text[:1000], previous_text[-400:]]))
         compact_context = self._compact(full_context)
+        compact_body = self._compact(table_body)
 
         if any(keyword in compact_context for keyword in map(self._compact, INVALID_TABLE_KEYWORDS)):
             return None
 
         candidates: list[str] = []
+        # Core performance: check page text AND table body for title keywords
         if any(token in table_header for token in TABLE_TITLE_PATTERNS["core_performance_indicators_sheet"]):
             candidates.append("core_performance_indicators_sheet")
-        if "合并资产负债表" in compact_context or any(token in table_header for token in ("货币资金", "资产总计", "流动资产")):
+        elif any(self._compact(token) in compact_context for token in ("主要会计数据和财务指标", "主要会计数据", "主要财务指标")):
+            # Page text mentions it — check if table body has core indicators
+            if any(token in compact_body for token in ("基本每股收益", "每股收益", "加权平均净资产收益率")):
+                candidates.append("core_performance_indicators_sheet")
+        # Three main consolidated statements: require "合并" in context for annual/semi-annual
+        if "合并资产负债表" in compact_context:
             candidates.append("balance_sheet")
-        if any(token in compact_context for token in ("合并利润表", "合并年初到报告期末利润表")) or any(token in table_header for token in ("营业收入", "营业总收入", "利润总额", "净利润")):
+        if any(token in compact_context for token in ("合并利润表", "合并年初到报告期末利润表")):
             candidates.append("income_sheet")
-        if any(token in compact_context for token in ("合并现金流量表", "合并年初到报告期末现金流量表")) or any(token in table_header for token in ("销售商品", "经营活动产生的现金流量净额", "现金及现金等价物净增加额")):
+        if any(token in compact_context for token in ("合并现金流量表", "合并年初到报告期末现金流量表")):
             candidates.append("cash_flow_sheet")
+        # For quarterly reports (shorter PDFs), fall back to keyword matching
+        # Require structural indicators: "流动资产" section header, or both a label and key amounts
+        if not candidates:
+            if "流动资产" in table_header and any(token in compact_body for token in ("货币资金", "资产总计")):
+                candidates.append("balance_sheet")
+            if any(token in table_header for token in ("营业收入", "营业总收入")) and "利润总额" in compact_body:
+                candidates.append("income_sheet")
+            if any(token in table_header for token in ("销售商品", "经营活动产生的现金流量净额")):
+                candidates.append("cash_flow_sheet")
 
         for table_type in dict.fromkeys(candidates):
-            if self._has_confirmation_keyword(table_type, compact_context):
+            if self._has_confirmation_keyword(table_type, compact_context + compact_body):
                 return table_type
         return None
 
@@ -208,6 +226,15 @@ class PDFParser:
     def _table_first_rows_text(table: ParsedTable) -> str:
         parts = []
         for row in table.raw_rows[:3]:
+            for cell in row:
+                if cell:
+                    parts.append(str(cell).replace("\n", ""))
+        return " ".join(parts)
+
+    @staticmethod
+    def _table_rows_text(table: ParsedTable, max_rows: int = 12) -> str:
+        parts = []
+        for row in table.raw_rows[:max_rows]:
             for cell in row:
                 if cell:
                     parts.append(str(cell).replace("\n", ""))

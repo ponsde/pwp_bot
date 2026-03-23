@@ -1,11 +1,11 @@
 """Two-step Text2SQL engine for financial QA."""
 from __future__ import annotations
 
+import copy
 import json
 import re
 import sqlite3
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 
 from src.etl.schema import load_schema_metadata
@@ -89,7 +89,6 @@ class Text2SQLEngine:
     def query(self, question: str, conversation: ConversationManager | None = None) -> QueryResult:
         manager = conversation or ConversationManager()
         intent = self.analyze(question, manager)
-        # Check if mentioned company exists in DB
         if intent.get("companies"):
             available = self.list_companies()
             unknown = [c for c in intent["companies"] if c not in available]
@@ -110,11 +109,10 @@ class Text2SQLEngine:
                 clarification_question=clarification,
             )
         try:
-            sql = self.generate_sql(question, intent)
-            rows = self._execute_with_retry(sql, question, intent)
+            sql, rows, final_intent = self._query_with_recovery(question, intent)
             if not rows:
-                return QueryResult(sql=sql, rows=[], intent=intent, error="未查询到符合条件的数据。")
-            return QueryResult(sql=sql, rows=rows, intent=intent)
+                return QueryResult(sql=sql, rows=[], intent=final_intent, error="未查询到符合条件的数据。")
+            return QueryResult(sql=sql, rows=rows, intent=final_intent)
         except UserFacingError as exc:
             return QueryResult(sql=None, rows=[], intent=intent, error=str(exc))
 
@@ -132,6 +130,35 @@ class Text2SQLEngine:
             return [row[0] for row in rows]
         finally:
             conn.close()
+
+    def _query_with_recovery(self, question: str, intent: dict[str, Any]) -> tuple[str, list[dict[str, Any]], dict[str, Any]]:
+        current_intent = copy.deepcopy(intent)
+        current_sql = self.generate_sql(question, current_intent)
+        current_rows = self._execute_with_retry(current_sql, question, current_intent)
+
+        validation = self._validate_result(question, current_intent, current_sql, current_rows)
+        if not validation["accepted"]:
+            current_sql = self.generate_sql(
+                self._augment_question(question, validation["reason"]),
+                current_intent,
+            )
+            current_rows = self._execute_with_retry(current_sql, question, current_intent)
+            validation = self._validate_result(question, current_intent, current_sql, current_rows)
+            if not validation["accepted"]:
+                raise UserFacingError(validation["reason"] or "查询结果无法支撑回答原问题。")
+
+        reflection = self._reflect_task(question, current_intent, current_sql, current_rows)
+        if not reflection["accepted"]:
+            reflected_question = reflection["question"] or self._augment_question(question, reflection["reason"])
+            current_intent = self.analyze(reflected_question, None)
+            self._validate_intent(current_intent)
+            current_sql = self.generate_sql(reflected_question, current_intent)
+            current_rows = self._execute_with_retry(current_sql, reflected_question, current_intent)
+            reflection = self._reflect_task(reflected_question, current_intent, current_sql, current_rows)
+            if not reflection["accepted"]:
+                raise UserFacingError(reflection["reason"] or "查询结果仍未满足原始任务。")
+
+        return current_sql, current_rows, current_intent
 
     def _execute_with_retry(self, sql: str, question: str, intent: dict[str, Any]) -> list[dict[str, Any]]:
         errors: list[str] = []
@@ -155,6 +182,67 @@ class Text2SQLEngine:
             return [dict(row) for row in cur.fetchall()]
         finally:
             conn.close()
+
+    def _validate_result(self, question: str, intent: dict[str, Any], sql: str, rows: list[dict[str, Any]]) -> dict[str, Any]:
+        if self.llm_client:
+            prompt = load_prompt(
+                "validate_result.md",
+                question=question,
+                intent_json=json.dumps(intent, ensure_ascii=False),
+                sql=sql,
+                rows_json=json.dumps(rows, ensure_ascii=False),
+            )
+            raw = self.llm_client.complete(prompt)
+            data = self._parse_json(raw)
+            accepted = bool(data.get("accepted", False))
+            return {
+                "accepted": accepted,
+                "reason": str(data.get("reason", "")).strip(),
+            }
+        if not rows:
+            return {"accepted": False, "reason": "查询结果为空，不足以回答问题。"}
+        if intent.get("fields"):
+            expected = set(intent["fields"])
+            present = set(rows[0].keys())
+            if not expected.issubset(present):
+                return {"accepted": False, "reason": "结果缺少预期指标字段。"}
+        if intent.get("companies"):
+            expected_companies = set(intent["companies"])
+            actual_companies = {str(row.get("stock_abbr")) for row in rows if row.get("stock_abbr") is not None}
+            if actual_companies and not actual_companies.issubset(expected_companies):
+                return {"accepted": False, "reason": "结果包含非目标公司数据。"}
+        if intent.get("periods") and not intent.get("is_trend"):
+            expected_periods = set(intent["periods"])
+            actual_periods = {str(row.get("report_period")) for row in rows if row.get("report_period") is not None}
+            if actual_periods and not actual_periods.issubset(expected_periods):
+                return {"accepted": False, "reason": "结果包含非目标报告期数据。"}
+        return {"accepted": True, "reason": ""}
+
+    def _reflect_task(self, question: str, intent: dict[str, Any], sql: str, rows: list[dict[str, Any]]) -> dict[str, Any]:
+        if self.llm_client:
+            prompt = load_prompt(
+                "reflect.md",
+                question=question,
+                intent_json=json.dumps(intent, ensure_ascii=False),
+                sql=sql,
+                rows_json=json.dumps(rows, ensure_ascii=False),
+            )
+            raw = self.llm_client.complete(prompt)
+            data = self._parse_json(raw)
+            accepted = bool(data.get("accepted", False))
+            rewritten_question = str(data.get("rewritten_question", "")).strip()
+            return {
+                "accepted": accepted,
+                "reason": str(data.get("reason", "")).strip(),
+                "question": rewritten_question,
+            }
+        return {"accepted": True, "reason": "", "question": ""}
+
+    def _augment_question(self, question: str, reason: str | None) -> str:
+        reason_text = (reason or "").strip()
+        if not reason_text:
+            return question
+        return f"{question}\n补充约束：{reason_text}"
 
     def _validate_intent(self, intent: dict[str, Any]) -> None:
         if not isinstance(intent, dict):

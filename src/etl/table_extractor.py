@@ -55,8 +55,6 @@ BALANCE_ALIASES = {
     "未分配利润": "equity_unappropriated_profit",
     "所有者权益合计": "equity_total_equity",
     "股东权益合计": "equity_total_equity",
-    "归属于母公司所有者权益合计": "equity_total_equity",
-    "归属于母公司股东权益合计": "equity_total_equity",
 }
 
 CASHFLOW_ALIASES = {
@@ -175,7 +173,10 @@ class TableExtractor:
             value = self._find_first_numeric(cells[1:])
             if value is None:
                 continue
-            target[field] = self._convert_value(value, self.meta_by_field[table_type][field], source_unit)
+            converted = self._convert_value(value, self.meta_by_field[table_type][field], source_unit)
+            # First-wins: don't overwrite values already extracted from an earlier (usually more authoritative) table
+            if field not in target:
+                target[field] = converted
 
     def _extract_core_metrics(
         self,
@@ -187,6 +188,7 @@ class TableExtractor:
     ) -> None:
         aliases = ALIASES["core_performance_indicators_sheet"]
         header = self._extract_header_cells(table)
+        year = report_period[:4]
         period_key = self._infer_core_period_key(report_period)
         for row in table.raw_rows:
             if not row:
@@ -199,8 +201,8 @@ class TableExtractor:
             field = aliases.get(label)
             if not field:
                 continue
-            value = self._select_core_value(normalized_row, header, period_key)
-            if value is not None:
+            value = self._select_core_value(normalized_row, header, period_key, year)
+            if value is not None and field not in target:
                 target[field] = self._convert_value(value, self.meta_by_field["core_performance_indicators_sheet"][field], source_unit)
 
     def _compute_derived_fields(self, records: dict[str, dict[str, Any]]) -> None:
@@ -253,22 +255,33 @@ class TableExtractor:
                 return cell
         return None
 
-    def _select_core_value(self, row: list[str], header: list[str], period_key: str) -> str | None:
+    def _select_core_value(self, row: list[str], header: list[str], period_key: str, year: str = "") -> str | None:
         if not header:
+            # No header detected — take first numeric value (current period column)
             return self._find_first_numeric([cell for cell in row[1:] if cell])
-        candidates = self._candidate_period_headers(period_key)
-        for idx, title in enumerate(header[1:], start=1):
+        candidates = self._candidate_period_headers(period_key, year)
+        # Find the target column index from header, then search nearby cells in data row
+        # (pdfplumber column alignment can be off by ±1)
+        target_indices = []
+        for idx, title in enumerate(header):
             normalized = self._clean_text(title)
             if normalized and any(token in normalized for token in candidates):
-                value = row[idx] if idx < len(row) else ""
-                if value and self._is_numeric_text(value):
-                    return value
-        for idx, title in enumerate(header[1:], start=1):
-            normalized = self._clean_text(title)
-            if period_key == "FY" and YEAR_HEADER_RE.fullmatch(normalized):
-                value = row[idx] if idx < len(row) else ""
-                if value and self._is_numeric_text(value):
-                    return value
+                target_indices.append(idx)
+        # For FY, also match bare year headers
+        if not target_indices and period_key == "FY" and year:
+            for idx, title in enumerate(header):
+                normalized = self._clean_text(title)
+                if normalized and year in normalized and YEAR_HEADER_RE.fullmatch(normalized):
+                    target_indices.append(idx)
+        # Search near the target column (±2) for numeric values
+        for col_idx in target_indices:
+            for offset in (0, -1, 1, -2, 2):
+                actual_idx = col_idx + offset
+                if 1 <= actual_idx < len(row):
+                    value = row[actual_idx]
+                    if value and self._is_numeric_text(value):
+                        return value
+        # Last resort: first numeric in the row (typically current period)
         return self._find_first_numeric([cell for cell in row[1:] if cell])
 
     @staticmethod
@@ -278,14 +291,17 @@ class TableExtractor:
         return report_period[-2:]
 
     @staticmethod
-    def _candidate_period_headers(period_key: str) -> tuple[str, ...]:
-        mapping = {
+    def _candidate_period_headers(period_key: str, year: str = "") -> tuple[str, ...]:
+        base = {
             "Q1": ("第一季度", "一季度", "本报告期", "本报告期末", "1-3月份"),
             "HY": ("半年度", "上半年", "本报告期", "本报告期末", "1-6月", "1-6月份"),
             "Q3": ("第三季度", "三季度", "本报告期", "本报告期末", "7-9月份", "9月30日"),
-            "FY": ("本期", "本报告期", "本期末", "2023年", "2024年", "2025年"),
+            "FY": ("本期", "本报告期", "本期末"),
         }
-        return mapping.get(period_key, tuple())
+        candidates = list(base.get(period_key, ()))
+        if year:
+            candidates.append(f"{year}年")
+        return tuple(candidates)
 
     def _extract_header_cells(self, table: ParsedTable) -> list[str]:
         for row in table.raw_rows[:4]:
