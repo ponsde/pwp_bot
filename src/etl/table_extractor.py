@@ -169,9 +169,22 @@ class TableExtractor:
                 continue
             cells = [self._clean_text(cell) for cell in row if cell not in (None, "")]
             if len(cells) < 2:
-                # Single-cell row: could be a split label, accumulate for next row
+                # Single-cell row with no number: either a section header or an
+                # empty-value item (e.g., "专项储备" with no amount).  Only
+                # accumulate as pending if it is a KNOWN partial alias prefix;
+                # otherwise reset — it is a standalone item with no value.
                 if cells and not self._find_first_numeric(cells):
-                    pending_label = (pending_label + cells[0]).strip()
+                    text = cells[0]
+                    if self._is_section_header(text):
+                        pending_label = ""
+                    else:
+                        # Check if appending this text to pending would form
+                        # a known alias — if not, don't accumulate
+                        candidate = self._normalize_label(pending_label + text)
+                        if aliases.get(candidate):
+                            pending_label = candidate
+                        else:
+                            pending_label = ""
                 continue
             label = self._normalize_label(pending_label + cells[0])
             pending_label = ""
@@ -179,6 +192,8 @@ class TableExtractor:
                 continue
             field = aliases.get(label)
             if not field:
+                # Unknown label with no value — don't accumulate as pending
+                # (only accumulate known partial labels that got split)
                 continue
             value = self._find_first_numeric(cells[1:])
             if value is None:
@@ -393,6 +408,14 @@ class TableExtractor:
         if match:
             return match.group(1)
         return None
+
+    @staticmethod
+    def _is_section_header(text: str) -> bool:
+        """Check if text is a section header like '流动资产：' that should not be accumulated."""
+        return text.endswith("：") or text.endswith(":") or text in (
+            "流动资产", "非流动资产", "流动负债", "非流动负债",
+            "所有者权益", "股东权益", "经营活动", "投资活动", "筹资活动",
+        )
 
     @staticmethod
     def _is_numeric_text(text: str) -> bool:
