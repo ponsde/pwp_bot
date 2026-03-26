@@ -74,6 +74,81 @@ def test_etl_quality_regressions_for_target_reports() -> None:
     assert jh_2024q3["income_sheet"].get("net_profit") is not None
 
 
+
+
+def test_core_derived_fields_and_flexible_aliases() -> None:
+    extractor = TableExtractor()
+    records = {
+        "income_sheet": {
+            "serial_number": 1,
+            "stock_code": "000001",
+            "stock_abbr": "示例",
+            "report_period": "2025Q1",
+            "report_year": 2025,
+            "total_operating_revenue": 1000.0,
+            "operating_expense_cost_of_sales": 600.0,
+            "net_profit": 120.0,
+        },
+        "balance_sheet": {
+            "serial_number": 1,
+            "stock_code": "000001",
+            "stock_abbr": "示例",
+            "report_period": "2025Q1",
+            "report_year": 2025,
+            "asset_total_assets": 2000.0,
+            "liability_total_liabilities": 800.0,
+            "equity_total_equity": 1200.0,
+        },
+        "cash_flow_sheet": {
+            "serial_number": 1,
+            "stock_code": "000001",
+            "stock_abbr": "示例",
+            "report_period": "2025Q1",
+            "report_year": 2025,
+        },
+        "core_performance_indicators_sheet": {
+            "serial_number": 1,
+            "stock_code": "000001",
+            "stock_abbr": "示例",
+            "report_period": "2025Q1",
+            "report_year": 2025,
+        },
+    }
+    extractor._compute_derived_fields(records)
+    core = records["core_performance_indicators_sheet"]
+    assert core["total_operating_revenue"] == 1000.0
+    assert core["net_profit_10k_yuan"] == 120.0
+    assert core["gross_profit_margin"] == 40.0
+    assert core["net_profit_margin"] == 12.0
+    assert core["roe"] == 10.0
+
+    assert extractor._normalize_label("归属于上市公司股东的每股净资产（元/股）") == "归属于上市公司股东的每股净资产"
+    assert extractor._normalize_label("基本每股收益（元/股）") == "基本每股收益"
+
+
+def test_target_report_regressions_for_coverage_optimization() -> None:
+    parser = PDFParser()
+    extractor = TableExtractor()
+
+    hz_2024fy = extractor.extract(parser.parse(REPORTS_DIR / "reports-深交所" / "华润三九：2024年年度报告.pdf"))[0]
+    core_2024fy = hz_2024fy["core_performance_indicators_sheet"]
+    assert core_2024fy.get("roe") is not None
+    assert core_2024fy.get("gross_profit_margin") is not None
+    assert core_2024fy.get("net_profit_margin") is not None
+    assert core_2024fy.get("total_operating_revenue") == hz_2024fy["income_sheet"].get("total_operating_revenue")
+    assert core_2024fy.get("net_profit_10k_yuan") == hz_2024fy["income_sheet"].get("net_profit")
+
+    hz_2025q1 = extractor.extract(parser.parse(REPORTS_DIR / "reports-深交所" / "华润三九：2025年一季度报告.pdf"))[0]
+    core_2025q1 = hz_2025q1["core_performance_indicators_sheet"]
+    assert core_2025q1.get("total_operating_revenue") == hz_2025q1["income_sheet"].get("total_operating_revenue")
+    assert core_2025q1.get("net_profit_margin") is not None
+
+    jh_2024q3 = extractor.extract(parser.parse(REPORTS_DIR / "reports-上交所" / "600080_20241030_XN72.pdf"))[0]
+    assert jh_2024q3["balance_sheet"].get("equity_total_equity") is not None
+    assert jh_2024q3["income_sheet"].get("operating_expense_taxes_and_surcharges") is not None
+    assert jh_2024q3["income_sheet"].get("total_operating_expenses") is not None
+
+
 def test_run_etl_all_reports_and_key_fields_non_null(tmp_path: Path) -> None:
     db_path = tmp_path / "finance.db"
     summary = run_etl(str(REPORTS_DIR), str(db_path))
@@ -144,5 +219,5 @@ def test_end_to_end_b1001_b1002(tmp_path: Path) -> None:
     df = __import__("pandas").read_excel(output)
     answer1 = df.loc[df["编号"] == "B1001", "回答"].iloc[0]
     answer2 = df.loc[df["编号"] == "B1002", "回答"].iloc[0]
-    assert "3140" in answer1
-    assert "240000" in answer2 or "24.00亿元" in answer2
+    assert "3140" in answer1 or "3,140" in answer1
+    assert "240000" in answer2 or "240,000" in answer2 or "24.00亿元" in answer2

@@ -34,7 +34,7 @@ TABLE_TITLE_PATTERNS = {
 }
 
 CONFIRM_KEYWORDS = {
-    "balance_sheet": ("货币资金",),
+    "balance_sheet": ("货币资金", "负债合计", "所有者权益合计", "股东权益合计"),
     "income_sheet": ("营业收入", "营业总收入"),
     "cash_flow_sheet": ("销售商品", "销售商品、提供劳务收到的现金", "销售商品及提供劳务收到的现金"),
     "core_performance_indicators_sheet": ("基本每股收益", "每股收益", "营业收入", "净利润", "归属于上市公司股东的净利润"),
@@ -88,7 +88,6 @@ class PDFParser:
         page_texts: list[str] = []
         tables: list[ParsedTable] = []
         with pdfplumber.open(path) as pdf:
-            # Scan all pages — don't skip middle pages where tables may appear
             page_indices = list(range(len(pdf.pages)))
             seen = set()
             previous_text = ""
@@ -183,7 +182,6 @@ class PDFParser:
 
     def _classify_table(self, table: ParsedTable, previous_text: str = "") -> str | None:
         table_header = self._table_first_rows_text(table)
-        # Include more rows for tables with sparse headers (e.g., core performance)
         table_body = self._table_rows_text(table, max_rows=12)
         full_context = "\n".join(filter(None, [table_header, table.title or "", table.text[:1000], previous_text[-400:]]))
         compact_context = self._compact(full_context)
@@ -201,24 +199,22 @@ class PDFParser:
             "归属于上市公司股东的净利润",
             "归属于上市公司股东",
             "经营活动产生的现金流量净额",
+            "营业收入",
         )
-        # Core performance: check page text AND table body for title keywords
         if any(token in table_header for token in TABLE_TITLE_PATTERNS["core_performance_indicators_sheet"]):
             if any(token in compact_body for token in map(self._compact, core_indicator_tokens)):
                 candidates.append("core_performance_indicators_sheet")
         elif any(self._compact(token) in compact_context for token in ("主要会计数据和财务指标", "主要会计数据", "主要财务指标")):
-            # Page text mentions it — check if table body has core indicators
             if any(token in compact_body for token in map(self._compact, core_indicator_tokens)):
                 candidates.append("core_performance_indicators_sheet")
-        # Three main consolidated statements: require "合并" in context for annual/semi-annual
         if "合并资产负债表" in compact_context:
+            candidates.append("balance_sheet")
+        if any(token in compact_body for token in ("负债合计", "所有者权益合计", "股东权益合计")):
             candidates.append("balance_sheet")
         if any(token in compact_context for token in ("合并利润表", "合并年初到报告期末利润表")):
             candidates.append("income_sheet")
         if any(token in compact_context for token in ("合并现金流量表", "合并年初到报告期末现金流量表")):
             candidates.append("cash_flow_sheet")
-        # For quarterly reports (shorter PDFs), fall back to keyword matching
-        # Require structural indicators: "流动资产" section header, or both a label and key amounts
         if not candidates:
             if "流动资产" in table_header and any(token in compact_body for token in ("货币资金", "资产总计")):
                 candidates.append("balance_sheet")
@@ -259,8 +255,6 @@ class PDFParser:
 
     def _merge_cross_page_tables(self, tables: list[ParsedTable]) -> list[ParsedTable]:
         merged: list[ParsedTable] = []
-        # Track the last page that was merged into each group, so multi-page
-        # tables (e.g., balance sheet spanning pages 59-62) merge correctly.
         last_merged_page: int = 0
         for table in tables:
             if not merged:
@@ -269,9 +263,7 @@ class PDFParser:
                 continue
             prev = merged[-1]
             same_page = table.page_number == prev.page_number
-            # Allow gap of 1 page (e.g., page 59 → 61 when page 60 had no tables,
-            # or when page 60's table was already merged)
-            near_page = table.page_number - last_merged_page <= 2 and table.page_number > prev.page_number
+            near_page = table.page_number - last_merged_page <= 3 and table.page_number > prev.page_number
             if same_page:
                 merged.append(table)
                 last_merged_page = table.page_number
