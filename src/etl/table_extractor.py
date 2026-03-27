@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import re
-from collections import defaultdict
 from typing import Any
 
 from src.etl.pdf_parser import ParsedPDF, ParsedTable
@@ -60,6 +59,9 @@ BALANCE_ALIASES = {
     "所有者权益合计": "equity_total_equity",
     "股东权益合计": "equity_total_equity",
     "所有者权益或股东权益合计": "equity_total_equity",
+    "股本": "share_capital",
+    "实收资本": "share_capital",
+    "实收资本或股本": "share_capital",
 }
 
 CASHFLOW_ALIASES = {
@@ -159,6 +161,7 @@ class TableExtractor:
             else:
                 self._extract_statement_table(table, table.table_type, records[table.table_type], source_unit, warnings)
 
+        self._fill_income_sheet_from_page_text(parsed_pdf, records["income_sheet"])
         self._compute_derived_fields(records)
         return records, warnings
 
@@ -199,7 +202,7 @@ class TableExtractor:
             if value is None:
                 pending_label = label
                 continue
-            converted = self._convert_value(value, self.meta_by_field[table_type][field], source_unit)
+            converted = self._convert_value(value, self._get_field_meta(table_type, field), source_unit)
             if field not in target:
                 target[field] = converted
 
@@ -223,47 +226,43 @@ class TableExtractor:
         idx = 0
         while idx < len(rows):
             row = rows[idx]
-            label, inline_value = self._extract_statement_label_and_value(row)
-            last_field = aliases.get(label)
-            field = last_field
-            consumed_rows = 0
-            next_idx = idx + 1
-            while next_idx < len(rows):
-                candidate_label, candidate_inline_value = self._extract_statement_label_and_value(rows[next_idx], label)
-                candidate_field = aliases.get(candidate_label)
-                if candidate_field and candidate_field != last_field:
-                    break
-                if candidate_label != label and candidate_field is None:
-                    label = candidate_label
-                    field = aliases.get(label)
-                    inline_value = candidate_inline_value if candidate_inline_value is not None else inline_value
-                    consumed_rows += 1
-                    next_idx += 1
-                    continue
-                if candidate_inline_value is None and not any(self._is_numeric_text(cell) for cell in rows[next_idx] if cell):
-                    label = candidate_label or label
-                    field = aliases.get(label)
-                    consumed_rows += 1
-                    next_idx += 1
-                    continue
-                break
-            if not label:
+            if not any(cell for cell in row):
                 idx += 1
                 continue
+            label_cells, row_numeric_values = self._split_core_row_segments(row)
+            if not label_cells:
+                idx += 1
+                continue
+            label = self._normalize_label("".join(label_cells))
+            consumed_rows = 0
+            next_idx = idx + 1
+            combined_numeric_values = list(row_numeric_values)
+            while next_idx < len(rows):
+                next_row = rows[next_idx]
+                next_label_cells, next_numeric_values = self._split_core_row_segments(next_row)
+                if not next_label_cells:
+                    if next_numeric_values:
+                        combined_numeric_values.extend(next_numeric_values)
+                    break
+                next_label = self._normalize_label(label + "".join(next_label_cells))
+                next_field = aliases.get(next_label)
+                if next_field is None and any(self._is_numeric_text(cell) for cell in next_row if cell):
+                    break
+                label = next_label
+                combined_numeric_values.extend(next_numeric_values)
+                consumed_rows += 1
+                next_idx += 1
+                if next_field is not None:
+                    break
             field = aliases.get(label)
             if not field:
                 idx += max(1, consumed_rows + 1)
                 continue
             value = self._select_core_value(row, header, period_key, year)
             if value is None:
-                value = inline_value
-            if value is None and idx + 1 < len(rows):
-                next_label, next_inline_value = self._extract_statement_label_and_value(rows[idx + 1], label)
-                if aliases.get(next_label) == field:
-                    value = self._select_core_value(rows[idx + 1], header, period_key, year) or next_inline_value
-                    consumed_rows += 1
+                value = self._select_value_from_candidates(combined_numeric_values, period_key)
             if value is not None and field not in target:
-                target[field] = self._convert_value(value, self.meta_by_field["core_performance_indicators_sheet"][field], source_unit)
+                target[field] = self._convert_value(value, self._get_field_meta("core_performance_indicators_sheet", field), source_unit)
             idx += max(1, consumed_rows + 1)
 
     def _compute_derived_fields(self, records: dict[str, dict[str, Any]]) -> None:
@@ -275,14 +274,21 @@ class TableExtractor:
         net_profit = income.get("net_profit")
         cost_of_sales = income.get("operating_expense_cost_of_sales")
 
-        if core.get("total_operating_revenue") is None and revenue is not None:
+        if revenue is not None:
             core["total_operating_revenue"] = revenue
-        if core.get("net_profit_10k_yuan") is None and net_profit is not None:
+        if net_profit is not None:
             core["net_profit_10k_yuan"] = net_profit
         if core.get("gross_profit_margin") is None and revenue not in (None, 0) and cost_of_sales is not None:
             core["gross_profit_margin"] = round((revenue - cost_of_sales) / revenue * 100, 4)
         if core.get("net_profit_margin") is None and revenue not in (None, 0) and net_profit is not None:
             core["net_profit_margin"] = round(net_profit / revenue * 100, 4)
+
+        share_capital = balance.get("share_capital")
+        operating_cf_net_amount = records["cash_flow_sheet"].get("operating_cf_net_amount")
+        if core.get("operating_cf_per_share") is None and share_capital not in (None, 0) and operating_cf_net_amount is not None:
+            core["operating_cf_per_share"] = round((operating_cf_net_amount * 10000) / share_capital, 4)
+        if core.get("net_asset_per_share") is None and balance.get("equity_total_equity") is not None and share_capital not in (None, 0):
+            core["net_asset_per_share"] = round((balance["equity_total_equity"] * 10000) / share_capital, 4)
 
         if core.get("roe") is None and core.get("net_profit_10k_yuan") is not None and balance.get("equity_total_equity") not in (None, 0):
             core["roe"] = round(core["net_profit_10k_yuan"] / balance["equity_total_equity"] * 100, 4)
@@ -379,24 +385,6 @@ class TableExtractor:
                 return normalized
         return []
 
-    def _extract_statement_label_and_value(self, row: list[str], pending_label: str = "") -> tuple[str, str | None]:
-        label_parts: list[str] = []
-        numeric_start: int | None = None
-        for idx, cell in enumerate(row):
-            if not cell:
-                continue
-            if self._is_numeric_text(cell):
-                numeric_start = idx
-                break
-            if cell in {"—", "--", "-"}:
-                continue
-            label_parts.append(cell)
-        label = self._normalize_label((pending_label + "".join(label_parts)).strip())
-        value = None
-        if numeric_start is not None:
-            value = self._find_first_numeric([cell for cell in row[numeric_start:] if cell])
-        return label, value
-
     @staticmethod
     def _looks_like_header_cell(text: str) -> bool:
         return any(token in text for token in ("季度", "年度", "本报告期", "本期", "期末", "月份", "年", "同比", "增减"))
@@ -469,15 +457,20 @@ class TableExtractor:
 
     def _match_header_indices(self, header: list[str], period_key: str, year: str) -> list[int]:
         candidates = self._candidate_period_headers(period_key, year)
+        excluded_tokens = ("增减", "同比", "变动", "增长")
         matches: list[int] = []
         for idx, title in enumerate(header):
             normalized = self._clean_text(title)
-            if normalized and any(token in normalized for token in candidates):
+            if not normalized or any(token in normalized for token in excluded_tokens):
+                continue
+            if any(token in normalized for token in candidates):
                 matches.append(idx)
         if not matches and period_key == "FY" and year:
             for idx, title in enumerate(header):
                 normalized = self._clean_text(title)
-                if normalized and year in normalized and YEAR_HEADER_RE.fullmatch(normalized):
+                if not normalized or any(token in normalized for token in excluded_tokens):
+                    continue
+                if year in normalized and YEAR_HEADER_RE.fullmatch(normalized):
                     matches.append(idx)
         return matches
 
@@ -501,6 +494,56 @@ class TableExtractor:
         if period_key in {"Q1", "HY"} and numeric_cells:
             return numeric_cells[:1]
         return []
+
+    def _split_core_row_segments(self, row: list[str]) -> tuple[list[str], list[str]]:
+        label_cells: list[str] = []
+        numeric_values: list[str] = []
+        for cell in row:
+            if not cell or cell in {"—", "--", "-", "不适用"}:
+                continue
+            if self._is_numeric_text(cell):
+                numeric_values.append(cell)
+                continue
+            label_cells.append(cell)
+        return label_cells, numeric_values
+
+    def _select_value_from_candidates(self, numeric_values: list[str], period_key: str) -> str | None:
+        if not numeric_values:
+            return None
+        return numeric_values[0]
+
+    def _fill_income_sheet_from_page_text(self, parsed_pdf: ParsedPDF, target: dict[str, Any]) -> None:
+        if target.get("net_profit") is None:
+            source_unit = None
+            for table in parsed_pdf.tables:
+                if table.table_type == "income_sheet":
+                    source_unit = self._detect_source_unit(table, [self._detect_text_unit(text) for text in parsed_pdf.page_texts])
+                    break
+            value = self._extract_income_value_from_page_text(parsed_pdf.page_texts, "净利润")
+            if value is not None:
+                target["net_profit"] = self._convert_value(value, self._get_field_meta("income_sheet", "net_profit"), source_unit)
+
+    def _extract_income_value_from_page_text(self, page_texts: list[str], label: str) -> str | None:
+        normalized_label = self._normalize_label(label)
+        pattern = re.compile(rf"{re.escape(label)}（[^\n]*?填列）\s+(-?\d+(?:,\d{{3}})*(?:\.\d+)?)", re.MULTILINE)
+        fallback_pattern = re.compile(rf"{re.escape(label)}\s{{0,20}}(-?\d+(?:,\d{{3}})*(?:\.\d+)?)", re.MULTILINE)
+        for text in page_texts:
+            if normalized_label not in self._normalize_label(text):
+                continue
+            match = pattern.search(text) or fallback_pattern.search(text)
+            if match:
+                return match.group(1)
+        return None
+
+    def _get_field_meta(self, table_type: str, field: str) -> FieldMeta:
+        table_meta = self.meta_by_field[table_type]
+        meta = table_meta.get(field)
+        if meta is not None:
+            return meta
+        inferred_unit = ""
+        if field == "share_capital":
+            inferred_unit = "元"
+        return FieldMeta(name=field, label=field, sqlite_type="REAL", excel_type="REAL", unit=inferred_unit, description="inferred")
 
 
 YEAR_HEADER_RE = re.compile(r"20\d{2}年(?:末)?")

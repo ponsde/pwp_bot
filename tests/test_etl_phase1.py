@@ -7,7 +7,7 @@ from pathlib import Path
 from pipeline import run_answer, run_etl
 from config import REPORTS_DIR
 from src.etl.loader import ETLLoader
-from src.etl.pdf_parser import PDFParser
+from src.etl.pdf_parser import PDFParser, ParsedPDF, ParsedTable
 from src.etl.table_extractor import TableExtractor
 from src.query.conversation import ConversationManager
 from src.query.text2sql import Text2SQLEngine
@@ -74,8 +74,6 @@ def test_etl_quality_regressions_for_target_reports() -> None:
     assert jh_2024q3["income_sheet"].get("net_profit") is not None
 
 
-
-
 def test_core_derived_fields_and_flexible_aliases() -> None:
     extractor = TableExtractor()
     records = {
@@ -98,6 +96,7 @@ def test_core_derived_fields_and_flexible_aliases() -> None:
             "asset_total_assets": 2000.0,
             "liability_total_liabilities": 800.0,
             "equity_total_equity": 1200.0,
+            "share_capital": 5000000.0,
         },
         "cash_flow_sheet": {
             "serial_number": 1,
@@ -105,6 +104,7 @@ def test_core_derived_fields_and_flexible_aliases() -> None:
             "stock_abbr": "示例",
             "report_period": "2025Q1",
             "report_year": 2025,
+            "operating_cf_net_amount": 250.0,
         },
         "core_performance_indicators_sheet": {
             "serial_number": 1,
@@ -121,9 +121,12 @@ def test_core_derived_fields_and_flexible_aliases() -> None:
     assert core["gross_profit_margin"] == 40.0
     assert core["net_profit_margin"] == 12.0
     assert core["roe"] == 10.0
+    assert core["operating_cf_per_share"] == 0.5
+    assert core["net_asset_per_share"] == 2.4
 
     assert extractor._normalize_label("归属于上市公司股东的每股净资产（元/股）") == "归属于上市公司股东的每股净资产"
     assert extractor._normalize_label("基本每股收益（元/股）") == "基本每股收益"
+    assert extractor._normalize_label("实收资本（或股本）") == "实收资本"
 
 
 def test_target_report_regressions_for_coverage_optimization() -> None:
@@ -137,6 +140,8 @@ def test_target_report_regressions_for_coverage_optimization() -> None:
     assert core_2024fy.get("net_profit_margin") is not None
     assert core_2024fy.get("total_operating_revenue") == hz_2024fy["income_sheet"].get("total_operating_revenue")
     assert core_2024fy.get("net_profit_10k_yuan") == hz_2024fy["income_sheet"].get("net_profit")
+    assert core_2024fy.get("eps") is not None
+    assert core_2024fy.get("net_profit_excl_non_recurring") is not None
 
     hz_2025q1 = extractor.extract(parser.parse(REPORTS_DIR / "reports-深交所" / "华润三九：2025年一季度报告.pdf"))[0]
     core_2025q1 = hz_2025q1["core_performance_indicators_sheet"]
@@ -147,6 +152,111 @@ def test_target_report_regressions_for_coverage_optimization() -> None:
     assert jh_2024q3["balance_sheet"].get("equity_total_equity") is not None
     assert jh_2024q3["income_sheet"].get("operating_expense_taxes_and_surcharges") is not None
     assert jh_2024q3["income_sheet"].get("total_operating_expenses") is not None
+    assert jh_2024q3["core_performance_indicators_sheet"].get("operating_cf_per_share") is not None
+    assert jh_2024q3["core_performance_indicators_sheet"].get("eps") is not None
+    assert jh_2024q3["core_performance_indicators_sheet"].get("net_profit_excl_non_recurring") is not None
+
+
+def test_extract_core_multiline_labels_with_inline_numbers() -> None:
+    extractor = TableExtractor()
+    table = ParsedTable(
+        page_number=1,
+        title="主要会计数据",
+        table_type="core_performance_indicators_sheet",
+        raw_rows=[
+            ["项目", "2024年", "2023年"],
+            ["基本每股收", "2.63", "2.15"],
+            ["益（元/股）", None, None],
+            ["归属于上市公司股东的扣除非经常", "311,786,734.83", "271,098,420.40"],
+            ["性损益的净利润（元）", None, None],
+            ["归属于上市公司股东的每股净资产", "14.56", "13.20"],
+        ],
+        text="单位：元",
+    )
+    target = {"serial_number": 1, "stock_code": "000001", "stock_abbr": "示例", "report_period": "2024FY", "report_year": 2024}
+    extractor._extract_core_metrics(table, target, "2024FY", "元", [])
+    assert target["eps"] == 2.63
+    assert target["net_profit_excl_non_recurring"] == 31178.67
+    assert target["net_asset_per_share"] == 14.56
+
+
+def test_fill_income_net_profit_from_page_text_when_table_truncated() -> None:
+    extractor = TableExtractor()
+    parsed = ParsedPDF(
+        file_path=Path("dummy.pdf"),
+        exchange="SZSE",
+        stock_code="000999",
+        stock_abbr="华润三九",
+        report_period="2023Q3",
+        report_year=2023,
+        is_summary=False,
+        page_texts=["", "五、净利润（净亏损以“－”号填列） 2,695,179,086.81 1,978,188,001.45\n（二）按所有权归属分类\n1.归属于母公司股东的净利润（净亏损以“-”号填列） 2,402,599,847.04 1,952,336,233.90"],
+        tables=[],
+    )
+    target = {"serial_number": 1, "stock_code": "000999", "stock_abbr": "华润三九", "report_period": "2023Q3", "report_year": 2023}
+    extractor._fill_income_sheet_from_page_text(parsed, target)
+    assert target["net_profit"] == 269517.91
+
+
+def test_loader_postprocess_fallback_fields(tmp_path: Path) -> None:
+    loader = ETLLoader(tmp_path / "fallback.db")
+    with sqlite3.connect(":memory:") as conn:
+        conn.execute("CREATE TABLE core_performance_indicators_sheet (stock_code TEXT, report_period TEXT, net_profit_10k_yuan REAL, roe REAL, net_asset_per_share REAL)")
+        conn.execute("CREATE TABLE balance_sheet (stock_code TEXT, report_period TEXT, report_year INTEGER, equity_total_equity REAL)")
+        loader._ensure_share_capital_cache_table(conn)
+        conn.executemany(
+            "INSERT INTO balance_sheet VALUES (?, ?, ?, ?)",
+            [
+                ("000001", "2024FY", 2024, 200.0),
+                ("000001", "2025Q1", 2025, None),
+                ("000002", "2025Q1", 2025, None),
+            ],
+        )
+        conn.executemany(
+            "INSERT INTO _share_capital_cache VALUES (?, ?, ?)",
+            [
+                ("000001", "2024FY", 1000000.0),
+            ],
+        )
+        conn.executemany(
+            "INSERT INTO core_performance_indicators_sheet VALUES (?, ?, ?, ?, ?)",
+            [
+                ("000001", "2025Q1", 20.0, None, None),
+                ("000002", "2025Q1", 30.0, None, None),
+            ],
+        )
+        loader._postprocess_fallback_fields(conn)
+        filled = conn.execute("SELECT roe, net_asset_per_share FROM core_performance_indicators_sheet WHERE stock_code='000001' AND report_period='2025Q1'").fetchone()
+        missing = conn.execute("SELECT roe, net_asset_per_share FROM core_performance_indicators_sheet WHERE stock_code='000002' AND report_period='2025Q1'").fetchone()
+        assert filled == (10.0, 2.0)
+        assert missing == (None, None)
+
+
+def test_loader_postprocess_yoy_qoq_growth(tmp_path: Path) -> None:
+    loader = ETLLoader(tmp_path / "growth.db")
+    with sqlite3.connect(":memory:") as conn:
+        conn.execute("CREATE TABLE core_performance_indicators_sheet (stock_code TEXT, report_period TEXT, total_operating_revenue REAL, net_profit_10k_yuan REAL, net_profit_excl_non_recurring REAL, operating_revenue_yoy_growth REAL, net_profit_yoy_growth REAL, net_profit_excl_non_recurring_yoy REAL, operating_revenue_qoq_growth REAL, net_profit_qoq_growth REAL)")
+        conn.execute("CREATE TABLE balance_sheet (stock_code TEXT, report_period TEXT, asset_total_assets REAL, liability_total_liabilities REAL, asset_total_assets_yoy_growth REAL, liability_total_liabilities_yoy_growth REAL)")
+        conn.executemany(
+            "INSERT INTO core_performance_indicators_sheet VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL)",
+            [
+                ("000001", "2023FY", 100.0, 20.0, 18.0),
+                ("000001", "2024Q3", 90.0, 18.0, 16.0),
+                ("000001", "2024FY", 120.0, 30.0, 24.0),
+            ],
+        )
+        conn.executemany(
+            "INSERT INTO balance_sheet VALUES (?, ?, ?, ?, NULL, NULL)",
+            [
+                ("000001", "2023FY", 200.0, 80.0),
+                ("000001", "2024FY", 260.0, 91.0),
+            ],
+        )
+        loader._postprocess_growth_fields(conn)
+        row = conn.execute("SELECT operating_revenue_yoy_growth, net_profit_yoy_growth, net_profit_excl_non_recurring_yoy FROM core_performance_indicators_sheet WHERE stock_code='000001' AND report_period='2024FY'").fetchone()
+        assert row == (20.0, 50.0, 33.3333)
+        balance_row = conn.execute("SELECT asset_total_assets_yoy_growth, liability_total_liabilities_yoy_growth FROM balance_sheet WHERE stock_code='000001' AND report_period='2024FY'").fetchone()
+        assert balance_row == (30.0, 13.75)
 
 
 def test_run_etl_all_reports_and_key_fields_non_null(tmp_path: Path) -> None:
@@ -156,8 +266,10 @@ def test_run_etl_all_reports_and_key_fields_non_null(tmp_path: Path) -> None:
     with sqlite3.connect(db_path) as conn:
         income_non_null = conn.execute("SELECT COUNT(*) FROM income_sheet WHERE total_operating_revenue IS NOT NULL AND total_profit IS NOT NULL").fetchone()[0]
         balance_non_null = conn.execute("SELECT COUNT(*) FROM balance_sheet WHERE asset_total_assets IS NOT NULL AND liability_total_liabilities IS NOT NULL").fetchone()[0]
+        yoy_non_null = conn.execute("SELECT COUNT(*) FROM core_performance_indicators_sheet WHERE operating_revenue_yoy_growth IS NOT NULL OR net_profit_yoy_growth IS NOT NULL").fetchone()[0]
         assert income_non_null >= 10
         assert balance_non_null >= 10
+        assert yoy_non_null >= 4
 
 
 def _seed_answer_db(db_path: Path) -> None:

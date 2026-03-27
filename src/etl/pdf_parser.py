@@ -187,7 +187,10 @@ class PDFParser:
         compact_context = self._compact(full_context)
         compact_body = self._compact(table_body)
 
-        if any(keyword in compact_context for keyword in map(self._compact, INVALID_TABLE_KEYWORDS)):
+        combined_compact = compact_context + compact_body
+        if any(keyword in combined_compact for keyword in map(self._compact, INVALID_TABLE_KEYWORDS)):
+            return None
+        if self._has_parent_company_marker(table):
             return None
 
         candidates: list[str] = []
@@ -250,6 +253,14 @@ class PDFParser:
     def _compact(text: str) -> str:
         return re.sub(r"\s+", "", text)
 
+    @staticmethod
+    def _has_parent_company_marker(table: ParsedTable) -> bool:
+        for row in table.raw_rows[:5]:
+            row_text = "".join(str(c) for c in row if c)
+            if "母公司" in row_text:
+                return True
+        return False
+
     def _has_confirmation_keyword(self, table_type: str, compact_context: str) -> bool:
         return any(self._compact(keyword) in compact_context for keyword in CONFIRM_KEYWORDS.get(table_type, ()))
 
@@ -273,7 +284,7 @@ class PDFParser:
                 prev.text += "\n" + table.text
                 last_merged_page = table.page_number
                 continue
-            if prev.table_type and table.table_type is None and near_page and not self._has_distinct_confirmation(prev.table_type, table):
+            if prev.table_type and table.table_type is None and near_page and not self._has_distinct_confirmation(prev.table_type, table) and not self._has_parent_company_marker(table):
                 table.table_type = prev.table_type
                 prev.raw_rows.extend(table.raw_rows)
                 prev.text += "\n" + table.text
