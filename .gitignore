@@ -29,6 +29,5 @@ result/*.xlsx
 
 # Local-only: Claude instructions, OpenSpec artifacts, AI context
 CLAUDE.md
-AI-CONTEXT.md
 PLAN.md
 openspec/
