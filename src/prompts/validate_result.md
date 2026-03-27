@@ -10,6 +10,7 @@
 3. `accepted=true` 表示结果合理；`accepted=false` 表示结果虽然执行成功，但明显不合理，需要重新生成 SQL。
 4. 当结果为空、缺少关键字段、与问题目标明显不匹配时，应返回 `accepted=false`，并在 `reason` 中简要说明原因。
 5. 不要改写问题，不要输出 SQL。
+6. 优先基于当前问题、意图和返回字段名判断是否命中了正确指标与过滤条件。
 
 用户问题：
 {question}
@@ -19,6 +20,9 @@
 
 当前 SQL：
 {sql}
+
+结果说明：
+{rows_hint}
 
 SQL 结果（JSON）：
 {rows_json}

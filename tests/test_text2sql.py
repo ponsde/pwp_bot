@@ -1,9 +1,10 @@
 import sqlite3
 from pathlib import Path
 
+from src.llm.client import LLMClient
 from src.prompts.loader import load_prompt
 from src.query.conversation import ConversationManager
-from src.query.text2sql import CREATE_TABLE_SQL, Text2SQLEngine
+from src.query.text2sql import CREATE_TABLE_SQL, MAX_PROMPT_ROWS, Text2SQLEngine
 
 
 def make_db(tmp_path: Path) -> str:
@@ -56,6 +57,7 @@ def test_load_new_recovery_prompts():
         intent_json='{"tables": ["income_sheet"], "fields": ["total_profit"], "companies": ["金花股份"], "periods": ["2025Q3"], "is_trend": false}',
         sql="SELECT total_profit FROM income_sheet WHERE stock_abbr = '金花股份' AND report_period = '2025Q3'",
         rows_json='[{"total_profit": 123}]',
+        rows_hint="结果共 1 行，已完整展示。",
     )
     reflect_content = load_prompt(
         "reflect.md",
@@ -63,6 +65,7 @@ def test_load_new_recovery_prompts():
         intent_json='{"tables": ["income_sheet"], "fields": ["total_profit"], "companies": ["金花股份"], "periods": ["2025Q3"], "is_trend": false}',
         sql="SELECT total_profit FROM income_sheet WHERE stock_abbr = '金花股份' AND report_period = '2025Q3'",
         rows_json='[{"total_profit": 123}]',
+        rows_hint="结果共 1 行，已完整展示。",
     )
     assert "金花股份2025年第三季度利润总额是多少" in validate_content
     assert "金花股份2025年第三季度利润总额是多少" in reflect_content
@@ -74,10 +77,10 @@ def test_second_layer_result_validation_regenerates_sql(tmp_path: Path):
             self.calls = []
             self.validation_count = 0
 
-        def complete(self, prompt: str) -> str:
-            self.calls.append(prompt)
+        def complete(self, prompt: str, **kwargs) -> str | dict:
+            self.calls.append((prompt, kwargs))
             if "提取结构化查询意图" in prompt:
-                return '{"tables": ["income_sheet"], "fields": ["total_profit"], "companies": ["金花股份"], "periods": ["2025Q3"], "is_trend": false}'
+                return {"tables": ["income_sheet"], "fields": ["total_profit"], "companies": ["金花股份"], "periods": ["2025Q3"], "is_trend": False}
             if "生成单条 SQL" in prompt:
                 if "补充约束" in prompt:
                     return "```sql\nSELECT total_profit FROM income_sheet WHERE stock_abbr = '金花股份' AND report_period = '2025Q3';\n```"
@@ -85,10 +88,10 @@ def test_second_layer_result_validation_regenerates_sql(tmp_path: Path):
             if "结果校验器" in prompt:
                 self.validation_count += 1
                 if self.validation_count == 1:
-                    return '{"accepted": false, "reason": "返回了净利润字段，不是利润总额字段。"}'
-                return '{"accepted": true, "reason": ""}'
+                    return {"accepted": False, "reason": "返回了净利润字段，不是利润总额字段。"}
+                return {"accepted": True, "reason": ""}
             if "任务反思器" in prompt:
-                return '{"accepted": true, "reason": "", "rewritten_question": ""}'
+                return {"accepted": True, "reason": "", "rewritten_question": ""}
             raise AssertionError(prompt)
 
     engine = Text2SQLEngine(make_db(tmp_path), llm_client=StubLLM())
@@ -103,14 +106,14 @@ def test_second_layer_result_validation_stops_after_one_retry(tmp_path: Path):
         def __init__(self):
             self.validation_count = 0
 
-        def complete(self, prompt: str) -> str:
+        def complete(self, prompt: str, **kwargs) -> str | dict:
             if "提取结构化查询意图" in prompt:
-                return '{"tables": ["income_sheet"], "fields": ["total_profit"], "companies": ["金花股份"], "periods": ["2025Q3"], "is_trend": false}'
+                return {"tables": ["income_sheet"], "fields": ["total_profit"], "companies": ["金花股份"], "periods": ["2025Q3"], "is_trend": False}
             if "生成单条 SQL" in prompt:
                 return "```sql\nSELECT net_profit FROM income_sheet WHERE stock_abbr = '金花股份' AND report_period = '2025Q3';\n```"
             if "结果校验器" in prompt:
                 self.validation_count += 1
-                return '{"accepted": false, "reason": "仍然返回了错误字段。"}'
+                return {"accepted": False, "reason": "仍然返回了错误字段。"}
             if "任务反思器" in prompt:
                 raise AssertionError("validation should fail before reflection")
             raise AssertionError(prompt)
@@ -125,22 +128,22 @@ def test_third_layer_reflection_reanalyzes_intent(tmp_path: Path):
         def __init__(self):
             self.reflect_count = 0
 
-        def complete(self, prompt: str) -> str:
+        def complete(self, prompt: str, **kwargs) -> str | dict:
             if "提取结构化查询意图" in prompt:
                 if "请查询金花股份2025年第三季度利润总额" in prompt:
-                    return '{"tables": ["income_sheet"], "fields": ["total_profit"], "companies": ["金花股份"], "periods": ["2025Q3"], "is_trend": false}'
-                return '{"tables": ["income_sheet"], "fields": ["net_profit"], "companies": ["金花股份"], "periods": ["2025Q3"], "is_trend": false}'
+                    return {"tables": ["income_sheet"], "fields": ["total_profit"], "companies": ["金花股份"], "periods": ["2025Q3"], "is_trend": False}
+                return {"tables": ["income_sheet"], "fields": ["net_profit"], "companies": ["金花股份"], "periods": ["2025Q3"], "is_trend": False}
             if "生成单条 SQL" in prompt:
                 if '"total_profit"' in prompt:
                     return "```sql\nSELECT total_profit FROM income_sheet WHERE stock_abbr = '金花股份' AND report_period = '2025Q3';\n```"
                 return "```sql\nSELECT net_profit FROM income_sheet WHERE stock_abbr = '金花股份' AND report_period = '2025Q3';\n```"
             if "结果校验器" in prompt:
-                return '{"accepted": true, "reason": ""}'
+                return {"accepted": True, "reason": ""}
             if "任务反思器" in prompt:
                 self.reflect_count += 1
                 if self.reflect_count == 1:
-                    return '{"accepted": false, "reason": "原始任务要查询利润总额，不是净利润。", "rewritten_question": "请查询金花股份2025年第三季度利润总额"}'
-                return '{"accepted": true, "reason": "", "rewritten_question": ""}'
+                    return {"accepted": False, "reason": "原始任务要查询利润总额，不是净利润。", "rewritten_question": "请查询金花股份2025年第三季度利润总额"}
+                return {"accepted": True, "reason": "", "rewritten_question": ""}
             raise AssertionError(prompt)
 
     engine = Text2SQLEngine(make_db(tmp_path), llm_client=StubLLM())
@@ -151,21 +154,58 @@ def test_third_layer_reflection_reanalyzes_intent(tmp_path: Path):
     assert result.intent["fields"] == ["total_profit"]
 
 
+def test_third_layer_reflection_reanalysis_keeps_conversation_context(tmp_path: Path):
+    """Verify that _query_with_recovery passes conversation to analyze during reflection."""
+    analyze_calls = []
+
+    class StubLLM:
+        def __init__(self):
+            self.reflect_count = 0
+
+        def complete(self, prompt: str, **kwargs) -> str | dict:
+            if "提取结构化查询意图" in prompt:
+                analyze_calls.append(prompt)
+                return {"tables": ["income_sheet"], "fields": ["total_profit"], "companies": ["金花股份"], "periods": ["2025Q3"], "is_trend": False}
+            if "生成单条 SQL" in prompt:
+                return "```sql\nSELECT total_profit FROM income_sheet WHERE stock_abbr = '金花股份' AND report_period = '2025Q3';\n```"
+            if "结果校验器" in prompt:
+                return {"accepted": True, "reason": ""}
+            if "任务反思器" in prompt:
+                self.reflect_count += 1
+                if self.reflect_count == 1:
+                    return {"accepted": False, "reason": "需要重新分析", "rewritten_question": "请查询金花股份2025年第三季度利润总额"}
+                return {"accepted": True, "reason": "", "rewritten_question": ""}
+            raise AssertionError(prompt)
+
+    engine = Text2SQLEngine(make_db(tmp_path), llm_client=StubLLM())
+    conv = ConversationManager()
+    conv.add_user_message("金花股份利润总额是多少")
+    conv.slots["companies"] = ["金花股份"]
+
+    result = engine.query("金花股份2025年第三季度利润总额", conv)
+    assert result.error is None
+    assert result.sql and "total_profit" in result.sql
+    # Reflection triggers re-analysis: there should be 2 analyze calls
+    assert len(analyze_calls) == 2
+    # Second analyze call (reflection) should include conversation text
+    assert "金花股份利润总额是多少" in analyze_calls[1]
+
+
 def test_third_layer_reflection_stops_after_one_retry(tmp_path: Path):
     class StubLLM:
         def __init__(self):
             self.reflect_count = 0
 
-        def complete(self, prompt: str) -> str:
+        def complete(self, prompt: str, **kwargs) -> str | dict:
             if "提取结构化查询意图" in prompt:
-                return '{"tables": ["income_sheet"], "fields": ["net_profit"], "companies": ["金花股份"], "periods": ["2025Q3"], "is_trend": false}'
+                return {"tables": ["income_sheet"], "fields": ["net_profit"], "companies": ["金花股份"], "periods": ["2025Q3"], "is_trend": False}
             if "生成单条 SQL" in prompt:
                 return "```sql\nSELECT net_profit FROM income_sheet WHERE stock_abbr = '金花股份' AND report_period = '2025Q3';\n```"
             if "结果校验器" in prompt:
-                return '{"accepted": true, "reason": ""}'
+                return {"accepted": True, "reason": ""}
             if "任务反思器" in prompt:
                 self.reflect_count += 1
-                return '{"accepted": false, "reason": "任务理解仍然错误。", "rewritten_question": "请查询金花股份2025年第三季度利润总额"}'
+                return {"accepted": False, "reason": "任务理解仍然错误。", "rewritten_question": "请查询金花股份2025年第三季度利润总额"}
             raise AssertionError(prompt)
 
     engine = Text2SQLEngine(make_db(tmp_path), llm_client=StubLLM())
@@ -190,3 +230,56 @@ def test_query_with_recovery_keeps_input_intent_immutable(tmp_path: Path):
     assert rows[0]["total_profit"] == 123000000
     assert intent == snapshot
     assert final_intent == snapshot
+
+
+def test_prompt_row_truncation_for_validation_and_reflection(tmp_path: Path):
+    captured_prompts = []
+
+    class StubLLM:
+        def complete(self, prompt: str, **kwargs) -> dict:
+            captured_prompts.append((prompt, kwargs))
+            if "结果校验器" in prompt:
+                return {"accepted": True, "reason": ""}
+            if "任务反思器" in prompt:
+                return {"accepted": True, "reason": "", "rewritten_question": ""}
+            raise AssertionError(prompt)
+
+    engine = Text2SQLEngine(make_db(tmp_path), llm_client=StubLLM())
+    rows = [{"idx": i} for i in range(MAX_PROMPT_ROWS + 5)]
+    engine._validate_result("q", {}, "SELECT 1", rows)
+    engine._reflect_task("q", {}, "SELECT 1", rows)
+
+    assert len(captured_prompts) == 2
+    for prompt, kwargs in captured_prompts:
+        assert kwargs.get("json_mode") is True
+        assert f"结果已截断，共 {MAX_PROMPT_ROWS + 5} 行" in prompt
+        assert '"idx": 49' in prompt
+        assert '"idx": 50' not in prompt
+
+
+def test_llm_client_complete_wraps_prompt_messages():
+    captured = {}
+
+    class StubCompletions:
+        def create(self, **kwargs):
+            captured.update(kwargs)
+            class Message:
+                content = "ok"
+            class Choice:
+                message = Message()
+            class Response:
+                choices = [Choice()]
+            return Response()
+
+    class StubChat:
+        completions = StubCompletions()
+
+    class StubOpenAI:
+        chat = StubChat()
+
+    client = LLMClient(client=StubOpenAI(), model="demo", timeout=30)
+    result = client.complete("hello", temperature=0.2)
+
+    assert result == "ok"
+    assert captured["messages"] == [{"role": "user", "content": "hello"}]
+    assert captured["temperature"] == 0.2

@@ -27,6 +27,9 @@ class LLMClient:
         client = OpenAI(api_key=settings.llm_api_key, base_url=settings.llm_api_base, timeout=settings.llm_timeout)
         return cls(client=client, model=settings.llm_model, timeout=settings.llm_timeout)
 
+    def complete(self, prompt: str, **kwargs: Any) -> str | dict[str, Any] | list[Any]:
+        return self.chat_completion(messages=[{"role": "user", "content": prompt}], **kwargs)
+
     def chat_completion(
         self,
         messages: list[dict[str, str]],

@@ -7,6 +7,7 @@
 4. 优先使用 `stock_abbr = ?`、`report_period = ?` 这种可参数化条件思路。
 5. 趋势场景请输出 `report_period` 和目标字段，并按 `report_year, report_period` 排序。
 6. 不要使用 DELETE/UPDATE/INSERT/ATTACH/PRAGMA。
+7. 计算类问题请直接使用已有字段表达式，不要假设数据库存在现成比率/同比字段。
 
 完整 Schema：
 {schema_sql}
@@ -67,6 +68,32 @@ WHERE stock_abbr = '金花股份' AND report_period = '2023FY';
 SELECT total_operating_revenue
 FROM income_sheet
 WHERE stock_abbr = '华润三九' AND report_period = '2025Q3';
+```
+
+9. 华润三九2023年净利润占营业收入的比例
+```sql
+SELECT net_profit * 1.0 / total_operating_revenue AS net_profit_ratio
+FROM income_sheet
+WHERE stock_abbr = '华润三九' AND report_period = '2023FY';
+```
+
+10. 金花股份2024年总资产减总负债
+```sql
+SELECT asset_total_assets - liability_total_liabilities AS net_assets_estimate
+FROM balance_sheet
+WHERE stock_abbr = '金花股份' AND report_period = '2024FY';
+```
+
+11. 华润三九2024年营业收入比2023年增长多少
+```sql
+SELECT (
+    SELECT total_operating_revenue FROM income_sheet
+    WHERE stock_abbr = '华润三九' AND report_period = '2024FY'
+) - (
+    SELECT total_operating_revenue FROM income_sheet
+    WHERE stock_abbr = '华润三九' AND report_period = '2023FY'
+) AS revenue_growth
+;
 ```
 
 查询解析结果：

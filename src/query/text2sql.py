@@ -31,6 +31,7 @@ FIELD_CATALOG = {
 }
 SAFE_SELECT_RE = re.compile(r"^\s*select\s+", re.I)
 FORBIDDEN_SQL_RE = re.compile(r"\b(insert|update|delete|drop|attach|pragma|alter|create|replace)\b", re.I)
+MAX_PROMPT_ROWS = 50
 
 
 class UserFacingError(Exception):
@@ -61,8 +62,8 @@ class Text2SQLEngine:
                 conversation=conversation_text,
                 question=question,
             )
-            raw = self.llm_client.complete(prompt)
-            intent = self._parse_json(raw)
+            raw = self.llm_client.complete(prompt, json_mode=True)
+            intent = self._ensure_json_dict(raw)
         else:
             intent = self._heuristic_intent(question)
         if conversation:
@@ -109,7 +110,7 @@ class Text2SQLEngine:
                 clarification_question=clarification,
             )
         try:
-            sql, rows, final_intent = self._query_with_recovery(question, intent)
+            sql, rows, final_intent = self._query_with_recovery(question, intent, manager)
             if not rows:
                 return QueryResult(sql=sql, rows=[], intent=final_intent, error="未查询到符合条件的数据。")
             return QueryResult(sql=sql, rows=rows, intent=final_intent)
@@ -131,7 +132,12 @@ class Text2SQLEngine:
         finally:
             conn.close()
 
-    def _query_with_recovery(self, question: str, intent: dict[str, Any]) -> tuple[str, list[dict[str, Any]], dict[str, Any]]:
+    def _query_with_recovery(
+        self,
+        question: str,
+        intent: dict[str, Any],
+        conversation: ConversationManager | None = None,
+    ) -> tuple[str, list[dict[str, Any]], dict[str, Any]]:
         current_intent = copy.deepcopy(intent)
         current_sql = self.generate_sql(question, current_intent)
         current_rows = self._execute_with_retry(current_sql, question, current_intent)
@@ -150,7 +156,7 @@ class Text2SQLEngine:
         reflection = self._reflect_task(question, current_intent, current_sql, current_rows)
         if not reflection["accepted"]:
             reflected_question = reflection["question"] or self._augment_question(question, reflection["reason"])
-            current_intent = self.analyze(reflected_question, None)
+            current_intent = self.analyze(reflected_question, conversation)
             self._validate_intent(current_intent)
             current_sql = self.generate_sql(reflected_question, current_intent)
             current_rows = self._execute_with_retry(current_sql, reflected_question, current_intent)
@@ -190,10 +196,11 @@ class Text2SQLEngine:
                 question=question,
                 intent_json=json.dumps(intent, ensure_ascii=False),
                 sql=sql,
-                rows_json=json.dumps(rows, ensure_ascii=False),
+                rows_json=self._serialize_rows_for_prompt(rows),
+                rows_hint=self._build_rows_hint(rows),
             )
-            raw = self.llm_client.complete(prompt)
-            data = self._parse_json(raw)
+            raw = self.llm_client.complete(prompt, json_mode=True)
+            data = self._ensure_json_dict(raw)
             accepted = bool(data.get("accepted", False))
             return {
                 "accepted": accepted,
@@ -225,10 +232,11 @@ class Text2SQLEngine:
                 question=question,
                 intent_json=json.dumps(intent, ensure_ascii=False),
                 sql=sql,
-                rows_json=json.dumps(rows, ensure_ascii=False),
+                rows_json=self._serialize_rows_for_prompt(rows),
+                rows_hint=self._build_rows_hint(rows),
             )
-            raw = self.llm_client.complete(prompt)
-            data = self._parse_json(raw)
+            raw = self.llm_client.complete(prompt, json_mode=True)
+            data = self._ensure_json_dict(raw)
             accepted = bool(data.get("accepted", False))
             rewritten_question = str(data.get("rewritten_question", "")).strip()
             return {
@@ -337,6 +345,13 @@ class Text2SQLEngine:
                 return json.loads(match.group(0))
             raise UserFacingError("LLM 未返回有效 JSON。")
 
+    def _ensure_json_dict(self, raw: Any) -> dict[str, Any]:
+        if isinstance(raw, dict):
+            return raw
+        if isinstance(raw, str):
+            return self._parse_json(raw)
+        raise UserFacingError("LLM 未返回有效 JSON。")
+
     def _extract_sql(self, raw: str) -> str:
         match = re.search(r"```sql\s*(.*?)```", raw, re.S | re.I)
         if match:
@@ -364,5 +379,15 @@ class Text2SQLEngine:
                 missing_info=", ".join(missing),
                 conversation=conversation.render(),
             )
-            return self.llm_client.complete(prompt).strip()
+            return str(self.llm_client.complete(prompt)).strip()
         return f"请补充{ '、'.join(missing) }。"
+
+    def _serialize_rows_for_prompt(self, rows: list[dict[str, Any]]) -> str:
+        prompt_rows = rows[:MAX_PROMPT_ROWS]
+        return json.dumps(prompt_rows, ensure_ascii=False)
+
+    def _build_rows_hint(self, rows: list[dict[str, Any]]) -> str:
+        total = len(rows)
+        if total > MAX_PROMPT_ROWS:
+            return f"结果已截断，共 {total} 行，仅展示前 {MAX_PROMPT_ROWS} 行。"
+        return f"结果共 {total} 行，已完整展示。"

@@ -24,6 +24,8 @@ for _font in _FONT_CANDIDATES:
 
 
 def select_chart_type(question: str, rows: Sequence[dict]) -> str:
+    if len(rows) <= 1:
+        return "none"
     if any(token in question for token in ["趋势", "变化", "历年", "季度", "走势", "近几年"]):
         return "line"
     if any(token in question for token in ["占比", "构成", "份额", "比例"]):

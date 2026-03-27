@@ -3,11 +3,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 from pathlib import Path
 
 import openpyxl
 
 from config import REPORTS_DIR
+
+logger = logging.getLogger(__name__)
 
 
 def _safe_chart_data(rows: list[dict]) -> list[dict]:
@@ -69,14 +72,24 @@ def _load_questions_xlsx(path: str) -> list[dict]:
     return questions
 
 
+def _build_llm_client():
+    from src.llm.client import LLMClient
+
+    try:
+        return LLMClient.from_env()
+    except (ValueError, OSError, RuntimeError) as exc:
+        logger.warning("LLM client unavailable, fallback to heuristic mode: %s", exc)
+        return None
+
+
 def run_answer(questions_path: str, db_path: str, output_xlsx: str) -> str:
     from src.query.answer import build_answer_content, build_answer_record
     from src.query.chart import render_chart, select_chart_type
     from src.query.conversation import ConversationManager
     from src.query.text2sql import Text2SQLEngine
-    engine = Text2SQLEngine(db_path=db_path)
+
+    engine = Text2SQLEngine(db_path=db_path, llm_client=_build_llm_client())
     all_records: list[dict] = []
-    all_sql: dict[str, str] = {}
 
     questions = _load_questions_xlsx(questions_path)
     for q_item in questions:
@@ -88,7 +101,12 @@ def run_answer(questions_path: str, db_path: str, output_xlsx: str) -> str:
         for turn in turns:
             question = turn["Q"]
             conversation.add_user_message(question)
-            result = engine.query(question, conversation)
+            try:
+                result = engine.query(question, conversation)
+            except Exception as exc:
+                logger.exception("Failed to answer question %s turn %s", question_id, question)
+                from src.query.text2sql import QueryResult
+                result = QueryResult(sql=None, rows=[], intent={}, error=f"查询失败：{exc}")
 
             if result.needs_clarification:
                 content = result.clarification_question or "请补充信息。"
@@ -109,10 +127,17 @@ def run_answer(questions_path: str, db_path: str, output_xlsx: str) -> str:
                 ) if chart_data else None
                 images = [image] if image else []
                 content = build_answer_content(question, result.rows)
-                all_sql[question] = result.sql or ""
 
             conversation.add_assistant_message(content)
-            turn_records.append(build_answer_record(question, content, images, chart_type_str))
+            turn_records.append(
+                build_answer_record(
+                    question,
+                    content,
+                    images,
+                    chart_type_str,
+                    sql=result.sql or "",
+                )
+            )
 
         all_records.append({
             "id": question_id,
@@ -120,12 +145,10 @@ def run_answer(questions_path: str, db_path: str, output_xlsx: str) -> str:
             "turn_records": turn_records,
         })
 
-    return _write_grouped_result_xlsx(all_records, output_xlsx, all_sql)
+    return _write_grouped_result_xlsx(all_records, output_xlsx)
 
 
-def _write_grouped_result_xlsx(
-    grouped: list[dict], output_path: str, sql_map: dict[str, str]
-) -> str:
+def _write_grouped_result_xlsx(grouped: list[dict], output_path: str) -> str:
     """Write result_2.xlsx in 附件7 format: one row per question group."""
     import pandas as pd
 
@@ -137,9 +160,8 @@ def _write_grouped_result_xlsx(
         first_sql = ""
         chart_type_label = "无"
         for rec in turn_records:
-            q = rec["Q"]
-            if q in sql_map and sql_map[q]:
-                first_sql = sql_map[q]
+            if rec.get("sql"):
+                first_sql = rec["sql"]
             if rec.get("chart_type", "无") != "无":
                 chart_type_label = rec["chart_type"]
         answer_json = json.dumps(

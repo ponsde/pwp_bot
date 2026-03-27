@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any, Sequence
 
@@ -16,12 +17,19 @@ CHART_TYPE_LABELS = {
     "none": "无",
 }
 
-# Build field → unit lookup from schema
+IDENTIFIER_FIELDS = {"stock_abbr", "report_period"}
+META_FIELDS = {"serial_number", "stock_code"}
+
+# Build field → unit and field → label lookups from schema
 _FIELD_UNITS: dict[str, str] = {}
+_FIELD_LABELS: dict[str, str] = {}
 for _fields in load_schema_metadata().values():
     for _f in _fields:
         if _f.unit and _f.name not in _FIELD_UNITS:
             _FIELD_UNITS[_f.name] = _f.unit
+        if _f.label and _f.name not in _FIELD_LABELS:
+            # Strip unit suffix like "(万元)" from label for display
+            _FIELD_LABELS[_f.name] = re.sub(r"[（(][^)）]*[)）]$", "", _f.label).strip()
 
 
 def format_number(value: Any, unit: str = "万元") -> str:
@@ -46,28 +54,40 @@ def build_answer_content(question: str, rows: Sequence[dict]) -> str:
     if len(rows) == 1 and len(rows[0]) == 1:
         field_name = next(iter(rows[0].keys()))
         value = next(iter(rows[0].values()))
-        unit = _FIELD_UNITS.get(field_name, "万元")
+        unit = _FIELD_UNITS.get(field_name, "")
         return f"{question}：{format_number(value, unit)}。"
     # Multi-row: build a readable summary
     parts = []
     for row in rows:
+        identifiers = [str(row[field]) for field in ("stock_abbr", "report_period") if row.get(field) not in (None, "")]
         items = []
         for k, v in row.items():
-            if k in {"serial_number", "stock_code", "stock_abbr"}:
+            if k in META_FIELDS or k in IDENTIFIER_FIELDS:
                 continue
             unit = _FIELD_UNITS.get(k, "")
-            items.append(f"{k}={format_number(v, unit) if isinstance(v, (int, float)) else v}")
-        parts.append(", ".join(items))
+            display_value = format_number(v, unit) if isinstance(v, (int, float)) else v
+            display_name = _FIELD_LABELS.get(k, k)
+            items.append(f"{display_name}={display_value}")
+        line = "，".join(identifiers)
+        if items:
+            metrics = "，".join(items)
+            line = f"{line}：{metrics}" if line else metrics
+        parts.append(line or "-")
     return "\n".join(parts)
 
 
 def build_answer_record(
-    question: str, content: str, image: list[str] | None = None, chart_type: str = "none",
+    question: str,
+    content: str,
+    image: list[str] | None = None,
+    chart_type: str = "none",
+    sql: str = "",
 ) -> dict:
     return {
         "Q": question,
         "A": {"content": content, "image": image or []},
         "chart_type": CHART_TYPE_LABELS.get(chart_type, "无"),
+        "sql": sql,
     }
 
 
@@ -80,7 +100,7 @@ def write_result_xlsx(
         rows.append({
             "编号": f"B{idx:04d}",
             "问题": json.dumps([{"Q": record["Q"]}], ensure_ascii=False),
-            "SQL查询语句": sql_map.get(record["Q"], ""),
+            "SQL查询语句": record.get("sql") or sql_map.get(record["Q"], ""),
             "图形格式": record.get("chart_type", "无"),
             "回答": json.dumps([{"Q": record["Q"], "A": record["A"]}], ensure_ascii=False),
         })
