@@ -125,7 +125,7 @@ class ETLLoader:
               AND {field_name} IS NOT NULL
               AND (report_year < ? OR (report_year = ? AND CASE SUBSTR(report_period, 5)
                 WHEN 'FY' THEN 4 WHEN 'Q3' THEN 3 WHEN 'HY' THEN 2 WHEN 'Q1' THEN 1 ELSE 0
-              END < ?))
+              END <= ?))
             ORDER BY report_year DESC, CASE SUBSTR(report_period, 5)
                 WHEN 'FY' THEN 4 WHEN 'Q3' THEN 3 WHEN 'HY' THEN 2 WHEN 'Q1' THEN 1 ELSE 0
             END DESC
@@ -146,7 +146,7 @@ class ETLLoader:
               AND share_capital IS NOT NULL
               AND (CAST(SUBSTR(report_period, 1, 4) AS INTEGER) < ? OR (CAST(SUBSTR(report_period, 1, 4) AS INTEGER) = ? AND CASE SUBSTR(report_period, 5)
                 WHEN 'FY' THEN 4 WHEN 'Q3' THEN 3 WHEN 'HY' THEN 2 WHEN 'Q1' THEN 1 ELSE 0
-              END < ?))
+              END <= ?))
             ORDER BY CAST(SUBSTR(report_period, 1, 4) AS INTEGER) DESC, CASE SUBSTR(report_period, 5)
                 WHEN 'FY' THEN 4 WHEN 'Q3' THEN 3 WHEN 'HY' THEN 2 WHEN 'Q1' THEN 1 ELSE 0
             END DESC
@@ -159,6 +159,8 @@ class ETLLoader:
     def _postprocess_growth_fields(self, conn: sqlite3.Connection) -> None:
         self._postprocess_core_growth_fields(conn)
         self._postprocess_balance_growth_fields(conn)
+        self._postprocess_income_growth_fields(conn)
+        self._postprocess_cashflow_growth_fields(conn)
 
     def _postprocess_core_growth_fields(self, conn: sqlite3.Connection) -> None:
         rows = conn.execute(
@@ -185,9 +187,9 @@ class ETLLoader:
             conn.execute(
                 """
                 UPDATE core_performance_indicators_sheet
-                SET operating_revenue_yoy_growth = ?,
-                    net_profit_yoy_growth = ?,
-                    net_profit_excl_non_recurring_yoy = ?
+                SET operating_revenue_yoy_growth = COALESCE(operating_revenue_yoy_growth, ?),
+                    net_profit_yoy_growth = COALESCE(net_profit_yoy_growth, ?),
+                    net_profit_excl_non_recurring_yoy = COALESCE(net_profit_excl_non_recurring_yoy, ?)
                 WHERE stock_code = ? AND report_period = ?
                 """,
                 [
@@ -218,13 +220,72 @@ class ETLLoader:
             conn.execute(
                 """
                 UPDATE balance_sheet
-                SET asset_total_assets_yoy_growth = ?,
-                    liability_total_liabilities_yoy_growth = ?
+                SET asset_total_assets_yoy_growth = COALESCE(asset_total_assets_yoy_growth, ?),
+                    liability_total_liabilities_yoy_growth = COALESCE(liability_total_liabilities_yoy_growth, ?)
                 WHERE stock_code = ? AND report_period = ?
                 """,
                 [
                     self._compute_growth(values["asset_total_assets"], records.get((stock_code, yoy_period), {}).get("asset_total_assets")),
                     self._compute_growth(values["liability_total_liabilities"], records.get((stock_code, yoy_period), {}).get("liability_total_liabilities")),
+                    stock_code,
+                    report_period,
+                ],
+            )
+
+    def _postprocess_income_growth_fields(self, conn: sqlite3.Connection) -> None:
+        rows = conn.execute(
+            """
+            SELECT stock_code, report_period, total_operating_revenue, net_profit
+            FROM income_sheet
+            """
+        ).fetchall()
+        records = {
+            (stock_code, report_period): {
+                "total_operating_revenue": revenue,
+                "net_profit": net_profit,
+            }
+            for stock_code, report_period, revenue, net_profit in rows
+        }
+        for (stock_code, report_period), values in records.items():
+            yoy_period = self._previous_yoy_period(report_period)
+            conn.execute(
+                """
+                UPDATE income_sheet
+                SET operating_revenue_yoy_growth = COALESCE(operating_revenue_yoy_growth, ?),
+                    net_profit_yoy_growth = COALESCE(net_profit_yoy_growth, ?)
+                WHERE stock_code = ? AND report_period = ?
+                """,
+                [
+                    self._compute_growth(values["total_operating_revenue"], records.get((stock_code, yoy_period), {}).get("total_operating_revenue")),
+                    self._compute_growth(values["net_profit"], records.get((stock_code, yoy_period), {}).get("net_profit")),
+                    stock_code,
+                    report_period,
+                ],
+            )
+
+    def _postprocess_cashflow_growth_fields(self, conn: sqlite3.Connection) -> None:
+        rows = conn.execute(
+            """
+            SELECT stock_code, report_period, net_cash_flow
+            FROM cash_flow_sheet
+            """
+        ).fetchall()
+        records = {
+            (stock_code, report_period): {
+                "net_cash_flow": net_cash_flow,
+            }
+            for stock_code, report_period, net_cash_flow in rows
+        }
+        for (stock_code, report_period), values in records.items():
+            yoy_period = self._previous_yoy_period(report_period)
+            conn.execute(
+                """
+                UPDATE cash_flow_sheet
+                SET net_cash_flow_yoy_growth = COALESCE(net_cash_flow_yoy_growth, ?)
+                WHERE stock_code = ? AND report_period = ?
+                """,
+                [
+                    self._compute_growth(values["net_cash_flow"], records.get((stock_code, yoy_period), {}).get("net_cash_flow")),
                     stock_code,
                     report_period,
                 ],

@@ -127,6 +127,8 @@ def run_answer(questions_path: str, db_path: str, output_xlsx: str) -> str:
                 ) if chart_data else None
                 images = [image] if image else []
                 content = build_answer_content(question, result.rows)
+                if result.warning:
+                    content += f"\n（注：{result.warning}）"
 
             conversation.add_assistant_message(content)
             turn_records.append(

@@ -8,6 +8,12 @@ from src.etl.schema import FieldMeta, load_schema_metadata
 
 
 BASE_COLUMNS = {"serial_number", "stock_code", "stock_abbr", "report_period", "report_year"}
+NET_PROFIT_PARENT_LABELS = (
+    "归属于母公司股东的净利润",
+    "归属于母公司所有者的净利润",
+    "归属于上市公司股东的净利润",
+    "归属母公司净利润",
+)
 
 INCOME_ALIASES = {
     "净利润": "net_profit",
@@ -202,7 +208,7 @@ class TableExtractor:
             if value is None:
                 pending_label = label
                 continue
-            converted = self._convert_value(value, self._get_field_meta(table_type, field), source_unit)
+            converted = self._convert_statement_value(table_type, field, value, source_unit)
             if field not in target:
                 target[field] = converted
 
@@ -269,14 +275,15 @@ class TableExtractor:
         income = records["income_sheet"]
         balance = records["balance_sheet"]
         core = records["core_performance_indicators_sheet"]
+        report_period = str(core.get("report_period") or income.get("report_period") or "")
 
         revenue = income.get("total_operating_revenue")
         net_profit = income.get("net_profit")
         cost_of_sales = income.get("operating_expense_cost_of_sales")
 
-        if revenue is not None:
+        if (core.get("total_operating_revenue") is None or report_period.endswith("Q3")) and revenue is not None:
             core["total_operating_revenue"] = revenue
-        if net_profit is not None:
+        if core.get("net_profit_10k_yuan") is None and net_profit is not None:
             core["net_profit_10k_yuan"] = net_profit
         if core.get("gross_profit_margin") is None and revenue not in (None, 0) and cost_of_sales is not None:
             core["gross_profit_margin"] = round((revenue - cost_of_sales) / revenue * 100, 4)
@@ -292,6 +299,15 @@ class TableExtractor:
 
         if core.get("roe") is None and core.get("net_profit_10k_yuan") is not None and balance.get("equity_total_equity") not in (None, 0):
             core["roe"] = round(core["net_profit_10k_yuan"] / balance["equity_total_equity"] * 100, 4)
+        if (
+            core.get("roe_weighted_excl_non_recurring") is None
+            and core.get("net_profit_excl_non_recurring") is not None
+            and balance.get("equity_total_equity") not in (None, 0)
+        ):
+            core["roe_weighted_excl_non_recurring"] = round(
+                core["net_profit_excl_non_recurring"] / balance["equity_total_equity"] * 100,
+                4,
+            )
         if balance.get("asset_total_assets") is not None and balance.get("liability_total_liabilities") is not None:
             total_assets = balance["asset_total_assets"]
             total_liabilities = balance["liability_total_liabilities"]
@@ -455,6 +471,19 @@ class TableExtractor:
             return round(numeric, 4)
         return round(numeric, 4)
 
+    def _convert_statement_value(self, table_type: str, field: str, value: str, source_unit: str | None) -> float:
+        meta = self._get_field_meta(table_type, field)
+        if table_type == "cash_flow_sheet" and field == "net_cash_flow":
+            meta = FieldMeta(
+                name=meta.name,
+                label=meta.label,
+                sqlite_type=meta.sqlite_type,
+                excel_type=meta.excel_type,
+                unit="万元",
+                description=meta.description,
+            )
+        return self._convert_value(value, meta, source_unit)
+
     def _match_header_indices(self, header: list[str], period_key: str, year: str) -> list[int]:
         candidates = self._candidate_period_headers(period_key, year)
         excluded_tokens = ("增减", "同比", "变动", "增长")
@@ -519,14 +548,19 @@ class TableExtractor:
                 if table.table_type == "income_sheet":
                     source_unit = self._detect_source_unit(table, [self._detect_text_unit(text) for text in parsed_pdf.page_texts])
                     break
-            value = self._extract_income_value_from_page_text(parsed_pdf.page_texts, "净利润")
-            if value is not None:
-                target["net_profit"] = self._convert_value(value, self._get_field_meta("income_sheet", "net_profit"), source_unit)
+            for label in (*NET_PROFIT_PARENT_LABELS, "净利润"):
+                value = self._extract_income_value_from_page_text(parsed_pdf.page_texts, label)
+                if value is not None:
+                    target["net_profit"] = self._convert_value(value, self._get_field_meta("income_sheet", "net_profit"), source_unit)
+                    break
 
     def _extract_income_value_from_page_text(self, page_texts: list[str], label: str) -> str | None:
         normalized_label = self._normalize_label(label)
         pattern = re.compile(rf"{re.escape(label)}（[^\n]*?填列）\s+(-?\d+(?:,\d{{3}})*(?:\.\d+)?)", re.MULTILINE)
-        fallback_pattern = re.compile(rf"{re.escape(label)}\s{{0,20}}(-?\d+(?:,\d{{3}})*(?:\.\d+)?)", re.MULTILINE)
+        fallback_pattern = re.compile(
+            rf"{re.escape(label)}[：:\s]{{0,20}}(-?\d+(?:,\d{{3}})*(?:\.\d+)?)",
+            re.MULTILINE,
+        )
         for text in page_texts:
             if normalized_label not in self._normalize_label(text):
                 continue

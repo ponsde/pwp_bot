@@ -67,13 +67,16 @@ def load_schema_metadata(schema_path: Path = SCHEMA_XLSX) -> dict[str, list[Fiel
             field_name = str(row["字段名称"]).strip()
             label = str(row["中文名称"]).strip()
             excel_type = str(row[df.columns[2]]).strip()
+            unit = infer_unit(label)
+            if table_name == "cash_flow_sheet" and field_name == "net_cash_flow":
+                unit = "万元"
             fields.append(
                 FieldMeta(
                     name=field_name,
                     label=label,
                     sqlite_type=excel_type_to_sqlite(excel_type),
                     excel_type=excel_type,
-                    unit=infer_unit(label),
+                    unit=unit,
                     description=str(row.get("字段说明", "")).strip(),
                 )
             )

@@ -120,3 +120,41 @@ def test_pipeline_answer_catches_unhandled_query_errors(tmp_path: Path, monkeypa
     result_df = pd.read_excel(output)
     answer_payload = json.loads(result_df.loc[0, "回答"])
     assert answer_payload[0]["A"]["content"] == "查询失败：llm timeout"
+
+
+def test_pipeline_answer_appends_warning_and_keeps_chart(tmp_path: Path, monkeypatch):
+    db_path = tmp_path / "finance.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute("CREATE TABLE income_sheet (serial_number INTEGER, stock_code TEXT, stock_abbr TEXT, report_period TEXT, report_year INTEGER, total_profit REAL, total_operating_revenue REAL)")
+    conn.execute("CREATE TABLE balance_sheet (serial_number INTEGER, stock_code TEXT, stock_abbr TEXT, report_period TEXT, report_year INTEGER, asset_total_assets REAL)")
+    conn.execute("CREATE TABLE cash_flow_sheet (serial_number INTEGER, stock_code TEXT, stock_abbr TEXT, report_period TEXT, report_year INTEGER, net_cash_flow REAL)")
+    conn.execute("CREATE TABLE core_performance_indicators_sheet (serial_number INTEGER, stock_code TEXT, stock_abbr TEXT, report_period TEXT, report_year INTEGER, eps REAL)")
+    conn.commit()
+    conn.close()
+
+    from src.query import text2sql as text2sql_module
+
+    def fake_query(self, question, conversation=None):
+        return text2sql_module.QueryResult(
+            sql="SELECT report_period, total_profit FROM income_sheet",
+            rows=[
+                {"report_period": "2023FY", "total_profit": 100.0},
+                {"report_period": "2024FY", "total_profit": 120.0},
+            ],
+            intent={"tables": ["income_sheet"], "fields": ["total_profit"]},
+            warning="仅查到2年数据，未满足近三年需求。",
+        )
+
+    monkeypatch.setattr(text2sql_module.Text2SQLEngine, "query", fake_query)
+
+    questions = tmp_path / "questions.xlsx"
+    pd.DataFrame([
+        {"编号": "B1004", "问题类型": "single", "问题": json.dumps([{"Q": "请对近三年利润总额做可视化绘图"}], ensure_ascii=False)}
+    ]).to_excel(questions, index=False)
+
+    output = tmp_path / "result_2.xlsx"
+    run_answer(str(questions), str(db_path), str(output))
+    result_df = pd.read_excel(output)
+    assert result_df.loc[0, "图形格式"] == "柱状图"
+    answer_payload = json.loads(result_df.loc[0, "回答"])
+    assert "（注：仅查到2年数据，未满足近三年需求。）" in answer_payload[0]["A"]["content"]

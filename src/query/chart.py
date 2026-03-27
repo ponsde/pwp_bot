@@ -30,7 +30,7 @@ def select_chart_type(question: str, rows: Sequence[dict]) -> str:
         return "line"
     if any(token in question for token in ["占比", "构成", "份额", "比例"]):
         return "pie"
-    if any(token in question for token in ["对比", "比较", "排名", "top"]):
+    if any(token in question for token in ["对比", "比较", "排名", "top", "绘图", "可视化", "画图", "图表"]):
         return "bar"
     if len(rows) > 1:
         return "bar"

@@ -120,7 +120,33 @@ def test_second_layer_result_validation_stops_after_one_retry(tmp_path: Path):
 
     engine = Text2SQLEngine(make_db(tmp_path), llm_client=StubLLM())
     result = engine.query("金花股份2025年第三季度利润总额是多少")
-    assert result.error == "仍然返回了错误字段。"
+    assert result.error is None
+    assert result.warning == "仍然返回了错误字段。"
+    assert result.rows[0]["net_profit"] == 31400000
+
+
+def test_second_layer_result_validation_returns_warning_when_rows_exist(tmp_path: Path):
+    class StubLLM:
+        def __init__(self):
+            self.validation_count = 0
+
+        def complete(self, prompt: str, **kwargs) -> str | dict:
+            if "提取结构化查询意图" in prompt:
+                return {"tables": ["income_sheet"], "fields": ["total_profit"], "companies": ["金花股份"], "periods": ["2025Q3"], "is_trend": False}
+            if "生成单条 SQL" in prompt:
+                return "```sql\nSELECT net_profit FROM income_sheet WHERE stock_abbr = '金花股份' AND report_period = '2025Q3';\n```"
+            if "结果校验器" in prompt:
+                self.validation_count += 1
+                return {"accepted": False, "reason": "仅查到部分指标。"}
+            if "任务反思器" in prompt:
+                return {"accepted": True, "reason": "", "rewritten_question": ""}
+            raise AssertionError(prompt)
+
+    engine = Text2SQLEngine(make_db(tmp_path), llm_client=StubLLM())
+    result = engine.query("金花股份2025年第三季度利润总额是多少")
+    assert result.error is None
+    assert result.warning == "仅查到部分指标。"
+    assert result.rows[0]["net_profit"] == 31400000
 
 
 def test_third_layer_reflection_reanalyzes_intent(tmp_path: Path):
@@ -210,7 +236,33 @@ def test_third_layer_reflection_stops_after_one_retry(tmp_path: Path):
 
     engine = Text2SQLEngine(make_db(tmp_path), llm_client=StubLLM())
     result = engine.query("金花股份2025年第三季度盈利情况")
-    assert result.error == "任务理解仍然错误。"
+    assert result.error is None
+    assert result.warning == "任务理解仍然错误。"
+    assert result.rows[0]["net_profit"] == 31400000
+
+
+def test_third_layer_reflection_returns_warning_when_rows_exist(tmp_path: Path):
+    class StubLLM:
+        def __init__(self):
+            self.reflect_count = 0
+
+        def complete(self, prompt: str, **kwargs) -> str | dict:
+            if "提取结构化查询意图" in prompt:
+                return {"tables": ["income_sheet"], "fields": ["net_profit"], "companies": ["金花股份"], "periods": ["2025Q3"], "is_trend": False}
+            if "生成单条 SQL" in prompt:
+                return "```sql\nSELECT net_profit FROM income_sheet WHERE stock_abbr = '金花股份' AND report_period = '2025Q3';\n```"
+            if "结果校验器" in prompt:
+                return {"accepted": True, "reason": ""}
+            if "任务反思器" in prompt:
+                self.reflect_count += 1
+                return {"accepted": False, "reason": "只查到部分年份数据。", "rewritten_question": "请查询金花股份2025年第三季度利润总额"}
+            raise AssertionError(prompt)
+
+    engine = Text2SQLEngine(make_db(tmp_path), llm_client=StubLLM())
+    result = engine.query("金花股份2025年第三季度盈利情况")
+    assert result.error is None
+    assert result.warning == "只查到部分年份数据。"
+    assert result.rows[0]["net_profit"] == 31400000
 
 
 def test_query_with_recovery_keeps_input_intent_immutable(tmp_path: Path):
@@ -224,10 +276,11 @@ def test_query_with_recovery_keeps_input_intent_immutable(tmp_path: Path):
     }
     snapshot = {k: (v.copy() if isinstance(v, list) else v) for k, v in intent.items()}
 
-    sql, rows, final_intent = engine._query_with_recovery("金花股份2025年第三季度利润总额是多少", intent)
+    sql, rows, final_intent, warning = engine._query_with_recovery("金花股份2025年第三季度利润总额是多少", intent)
 
     assert sql and "total_profit" in sql
     assert rows[0]["total_profit"] == 123000000
+    assert warning is None
     assert intent == snapshot
     assert final_intent == snapshot
 

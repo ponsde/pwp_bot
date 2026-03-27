@@ -44,6 +44,7 @@ class QueryResult:
     rows: list[dict[str, Any]]
     intent: dict[str, Any]
     error: str | None = None
+    warning: str | None = None
     needs_clarification: bool = False
     clarification_question: str | None = None
 
@@ -110,10 +111,10 @@ class Text2SQLEngine:
                 clarification_question=clarification,
             )
         try:
-            sql, rows, final_intent = self._query_with_recovery(question, intent, manager)
+            sql, rows, final_intent, warning = self._query_with_recovery(question, intent, manager)
             if not rows:
                 return QueryResult(sql=sql, rows=[], intent=final_intent, error="未查询到符合条件的数据。")
-            return QueryResult(sql=sql, rows=rows, intent=final_intent)
+            return QueryResult(sql=sql, rows=rows, intent=final_intent, warning=warning)
         except UserFacingError as exc:
             return QueryResult(sql=None, rows=[], intent=intent, error=str(exc))
 
@@ -137,8 +138,9 @@ class Text2SQLEngine:
         question: str,
         intent: dict[str, Any],
         conversation: ConversationManager | None = None,
-    ) -> tuple[str, list[dict[str, Any]], dict[str, Any]]:
+    ) -> tuple[str, list[dict[str, Any]], dict[str, Any], str | None]:
         current_intent = copy.deepcopy(intent)
+        warning: str | None = None
         current_sql = self.generate_sql(question, current_intent)
         current_rows = self._execute_with_retry(current_sql, question, current_intent)
 
@@ -151,7 +153,10 @@ class Text2SQLEngine:
             current_rows = self._execute_with_retry(current_sql, question, current_intent)
             validation = self._validate_result(question, current_intent, current_sql, current_rows)
             if not validation["accepted"]:
-                raise UserFacingError(validation["reason"] or "查询结果无法支撑回答原问题。")
+                warning = validation["reason"] or "查询结果无法支撑回答原问题。"
+                if not current_rows:
+                    raise UserFacingError(warning)
+                return current_sql, current_rows, current_intent, warning
 
         reflection = self._reflect_task(question, current_intent, current_sql, current_rows)
         if not reflection["accepted"]:
@@ -162,9 +167,11 @@ class Text2SQLEngine:
             current_rows = self._execute_with_retry(current_sql, reflected_question, current_intent)
             reflection = self._reflect_task(reflected_question, current_intent, current_sql, current_rows)
             if not reflection["accepted"]:
-                raise UserFacingError(reflection["reason"] or "查询结果仍未满足原始任务。")
+                warning = reflection["reason"] or "查询结果仍未满足原始任务。"
+                if not current_rows:
+                    raise UserFacingError(warning)
 
-        return current_sql, current_rows, current_intent
+        return current_sql, current_rows, current_intent, warning
 
     def _execute_with_retry(self, sql: str, question: str, intent: dict[str, Any]) -> list[dict[str, Any]]:
         errors: list[str] = []

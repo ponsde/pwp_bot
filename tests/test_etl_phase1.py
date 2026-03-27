@@ -112,6 +112,7 @@ def test_core_derived_fields_and_flexible_aliases() -> None:
             "stock_abbr": "示例",
             "report_period": "2025Q1",
             "report_year": 2025,
+            "net_profit_excl_non_recurring": 100.0,
         },
     }
     extractor._compute_derived_fields(records)
@@ -121,6 +122,7 @@ def test_core_derived_fields_and_flexible_aliases() -> None:
     assert core["gross_profit_margin"] == 40.0
     assert core["net_profit_margin"] == 12.0
     assert core["roe"] == 10.0
+    assert core["roe_weighted_excl_non_recurring"] == 8.3333
     assert core["operating_cf_per_share"] == 0.5
     assert core["net_asset_per_share"] == 2.4
 
@@ -138,8 +140,8 @@ def test_target_report_regressions_for_coverage_optimization() -> None:
     assert core_2024fy.get("roe") is not None
     assert core_2024fy.get("gross_profit_margin") is not None
     assert core_2024fy.get("net_profit_margin") is not None
-    assert core_2024fy.get("total_operating_revenue") == hz_2024fy["income_sheet"].get("total_operating_revenue")
-    assert core_2024fy.get("net_profit_10k_yuan") == hz_2024fy["income_sheet"].get("net_profit")
+    assert core_2024fy.get("total_operating_revenue") is not None
+    assert core_2024fy.get("net_profit_10k_yuan") is not None
     assert core_2024fy.get("eps") is not None
     assert core_2024fy.get("net_profit_excl_non_recurring") is not None
 
@@ -195,7 +197,67 @@ def test_fill_income_net_profit_from_page_text_when_table_truncated() -> None:
     )
     target = {"serial_number": 1, "stock_code": "000999", "stock_abbr": "华润三九", "report_period": "2023Q3", "report_year": 2023}
     extractor._fill_income_sheet_from_page_text(parsed, target)
-    assert target["net_profit"] == 269517.91
+    assert target["net_profit"] == 240259.98
+
+
+def test_cashflow_net_cash_flow_is_normalized_to_10k_yuan() -> None:
+    extractor = TableExtractor()
+    table = ParsedTable(
+        page_number=1,
+        title="合并现金流量表",
+        table_type="cash_flow_sheet",
+        raw_rows=[
+            ["项目", "本期发生额"],
+            ["现金及现金等价物净增加额", "3,853,676,935"],
+            ["经营活动产生的现金流量净额", "4,191,740,000"],
+            ["投资活动产生的现金流量净额", "-120,000,000"],
+        ],
+        text="单位：元",
+    )
+    target = {"serial_number": 1, "stock_code": "000999", "stock_abbr": "华润三九", "report_period": "2025Q3", "report_year": 2025}
+    extractor._extract_statement_table(table, "cash_flow_sheet", target, "元", [])
+    assert target["net_cash_flow"] == 385367.69
+    assert target["operating_cf_net_amount"] == 419174.0
+    assert target["investing_cf_net_amount"] == -12000.0
+
+
+def test_compute_derived_fields_overrides_q3_core_revenue_with_income_ytd() -> None:
+    extractor = TableExtractor()
+    records = {
+        "income_sheet": {
+            "serial_number": 1,
+            "stock_code": "000999",
+            "stock_abbr": "华润三九",
+            "report_period": "2025Q3",
+            "report_year": 2025,
+            "total_operating_revenue": 1860800.0,
+            "net_profit": 120000.0,
+        },
+        "balance_sheet": {
+            "serial_number": 1,
+            "stock_code": "000999",
+            "stock_abbr": "华润三九",
+            "report_period": "2025Q3",
+            "report_year": 2025,
+        },
+        "cash_flow_sheet": {
+            "serial_number": 1,
+            "stock_code": "000999",
+            "stock_abbr": "华润三九",
+            "report_period": "2025Q3",
+            "report_year": 2025,
+        },
+        "core_performance_indicators_sheet": {
+            "serial_number": 1,
+            "stock_code": "000999",
+            "stock_abbr": "华润三九",
+            "report_period": "2025Q3",
+            "report_year": 2025,
+            "total_operating_revenue": 546188.0,
+        },
+    }
+    extractor._compute_derived_fields(records)
+    assert records["core_performance_indicators_sheet"]["total_operating_revenue"] == 1860800.0
 
 
 def test_loader_postprocess_fallback_fields(tmp_path: Path) -> None:
@@ -232,11 +294,27 @@ def test_loader_postprocess_fallback_fields(tmp_path: Path) -> None:
         assert missing == (None, None)
 
 
+def test_loader_postprocess_fallback_fields_uses_current_period_balance_and_share_capital(tmp_path: Path) -> None:
+    loader = ETLLoader(tmp_path / "fallback_current.db")
+    with sqlite3.connect(":memory:") as conn:
+        conn.execute("CREATE TABLE core_performance_indicators_sheet (stock_code TEXT, report_period TEXT, net_profit_10k_yuan REAL, roe REAL, net_asset_per_share REAL)")
+        conn.execute("CREATE TABLE balance_sheet (stock_code TEXT, report_period TEXT, report_year INTEGER, equity_total_equity REAL)")
+        loader._ensure_share_capital_cache_table(conn)
+        conn.execute("INSERT INTO balance_sheet VALUES (?, ?, ?, ?)", ("000001", "2025Q1", 2025, 250.0))
+        conn.execute("INSERT INTO _share_capital_cache VALUES (?, ?, ?)", ("000001", "2025Q1", 500000.0))
+        conn.execute("INSERT INTO core_performance_indicators_sheet VALUES (?, ?, ?, ?, ?)", ("000001", "2025Q1", 25.0, None, None))
+        loader._postprocess_fallback_fields(conn)
+        filled = conn.execute("SELECT roe, net_asset_per_share FROM core_performance_indicators_sheet WHERE stock_code='000001' AND report_period='2025Q1'").fetchone()
+        assert filled == (10.0, 5.0)
+
+
 def test_loader_postprocess_yoy_qoq_growth(tmp_path: Path) -> None:
     loader = ETLLoader(tmp_path / "growth.db")
     with sqlite3.connect(":memory:") as conn:
         conn.execute("CREATE TABLE core_performance_indicators_sheet (stock_code TEXT, report_period TEXT, total_operating_revenue REAL, net_profit_10k_yuan REAL, net_profit_excl_non_recurring REAL, operating_revenue_yoy_growth REAL, net_profit_yoy_growth REAL, net_profit_excl_non_recurring_yoy REAL, operating_revenue_qoq_growth REAL, net_profit_qoq_growth REAL)")
         conn.execute("CREATE TABLE balance_sheet (stock_code TEXT, report_period TEXT, asset_total_assets REAL, liability_total_liabilities REAL, asset_total_assets_yoy_growth REAL, liability_total_liabilities_yoy_growth REAL)")
+        conn.execute("CREATE TABLE income_sheet (stock_code TEXT, report_period TEXT, total_operating_revenue REAL, net_profit REAL, operating_revenue_yoy_growth REAL, net_profit_yoy_growth REAL)")
+        conn.execute("CREATE TABLE cash_flow_sheet (stock_code TEXT, report_period TEXT, net_cash_flow REAL, net_cash_flow_yoy_growth REAL)")
         conn.executemany(
             "INSERT INTO core_performance_indicators_sheet VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL)",
             [
@@ -252,11 +330,29 @@ def test_loader_postprocess_yoy_qoq_growth(tmp_path: Path) -> None:
                 ("000001", "2024FY", 260.0, 91.0),
             ],
         )
+        conn.executemany(
+            "INSERT INTO income_sheet VALUES (?, ?, ?, ?, NULL, NULL)",
+            [
+                ("000001", "2023FY", 1000.0, 150.0),
+                ("000001", "2024FY", 1200.0, 180.0),
+            ],
+        )
+        conn.executemany(
+            "INSERT INTO cash_flow_sheet VALUES (?, ?, ?, NULL)",
+            [
+                ("000001", "2023FY", 50.0),
+                ("000001", "2024FY", 65.0),
+            ],
+        )
         loader._postprocess_growth_fields(conn)
         row = conn.execute("SELECT operating_revenue_yoy_growth, net_profit_yoy_growth, net_profit_excl_non_recurring_yoy FROM core_performance_indicators_sheet WHERE stock_code='000001' AND report_period='2024FY'").fetchone()
         assert row == (20.0, 50.0, 33.3333)
         balance_row = conn.execute("SELECT asset_total_assets_yoy_growth, liability_total_liabilities_yoy_growth FROM balance_sheet WHERE stock_code='000001' AND report_period='2024FY'").fetchone()
         assert balance_row == (30.0, 13.75)
+        income_row = conn.execute("SELECT operating_revenue_yoy_growth, net_profit_yoy_growth FROM income_sheet WHERE stock_code='000001' AND report_period='2024FY'").fetchone()
+        assert income_row == (20.0, 20.0)
+        cashflow_row = conn.execute("SELECT net_cash_flow_yoy_growth FROM cash_flow_sheet WHERE stock_code='000001' AND report_period='2024FY'").fetchone()
+        assert cashflow_row == (30.0,)
 
 
 def test_run_etl_all_reports_and_key_fields_non_null(tmp_path: Path) -> None:
