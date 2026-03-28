@@ -34,9 +34,9 @@ TABLE_TITLE_PATTERNS = {
 }
 
 CONFIRM_KEYWORDS = {
-    "balance_sheet": ("货币资金", "负债合计", "所有者权益合计", "股东权益合计"),
-    "income_sheet": ("营业收入", "营业总收入"),
-    "cash_flow_sheet": ("销售商品", "销售商品、提供劳务收到的现金", "销售商品及提供劳务收到的现金"),
+    "balance_sheet": ("货币资金", "负债合计", "所有者权益合计", "股东权益合计", "资产总计", "资产总额"),
+    "income_sheet": ("营业收入", "营业总收入", "利润总额", "净利润", "营业支出", "手续费及佣金净收入"),
+    "cash_flow_sheet": ("销售商品", "销售商品、提供劳务收到的现金", "销售商品及提供劳务收到的现金", "经营活动产生的现金流量净额", "现金及现金等价物净增加额"),
     "core_performance_indicators_sheet": ("基本每股收益", "每股收益", "营业收入", "净利润", "归属于上市公司股东的净利润"),
 }
 
@@ -47,6 +47,7 @@ INVALID_TABLE_KEYWORDS = (
     "母公司所有者权益变动表",
     "母公司股东权益变动表",
 )
+EXCLUDED_STATEMENT_KEYWORDS = ("股东权益变动", "所有者权益变动", "所有者权益内部结转", "上年年末余额", "本年增减变动金额")
 
 
 @dataclass
@@ -77,7 +78,6 @@ class PDFParser:
 
     def parse(self, pdf_path: str | Path) -> ParsedPDF:
         path = Path(pdf_path)
-        # Detect format by filename pattern, not directory name
         if SZSE_RE.search(path.name):
             meta = self._parse_szse_meta(path)
             exchange = "SZSE"
@@ -118,7 +118,6 @@ class PDFParser:
         stock_abbr = m.group("abbr")
         info = self.company_mapping.get(stock_abbr)
         if not info:
-            # Try to extract stock_code from PDF content
             info = self._extract_company_from_pdf(path, stock_abbr)
         period_name = m.group("period")
         year = int(m.group("year"))
@@ -181,7 +180,6 @@ class PDFParser:
 
     @staticmethod
     def _extract_company_from_pdf(path: Path, stock_abbr: str) -> dict[str, str]:
-        """Extract stock_code from PDF content for unknown companies."""
         code_re = re.compile(r"(?:证券代码|股票代码|公司代码)[：:\s]*(\d{6})")
         with pdfplumber.open(path) as pdf:
             for i in range(min(10, len(pdf.pages))):
@@ -199,16 +197,23 @@ class PDFParser:
         return None
 
     def _classify_table(self, table: ParsedTable, previous_text: str = "") -> str | None:
+        if self._count_data_rows(table) < 3:
+            return None
+
         table_header = self._table_first_rows_text(table)
         table_body = self._table_rows_text(table, max_rows=12)
         full_context = "\n".join(filter(None, [table_header, table.title or "", table.text[:1000], previous_text[-400:]]))
         compact_context = self._compact(full_context)
         compact_body = self._compact(table_body)
-
         combined_compact = compact_context + compact_body
-        if any(keyword in combined_compact for keyword in map(self._compact, INVALID_TABLE_KEYWORDS)):
+
+        if any(token in combined_compact for keyword in map(self._compact, INVALID_TABLE_KEYWORDS) for token in (keyword,)):
+            return None
+        if any(keyword in combined_compact for keyword in map(self._compact, EXCLUDED_STATEMENT_KEYWORDS)):
             return None
         if self._has_parent_company_marker(table):
+            return None
+        if "金额" in compact_body and "占比" in compact_body and all(token in compact_body for token in ("营业收入", "净利润", "利润总额")):
             return None
 
         candidates: list[str] = []
@@ -228,20 +233,24 @@ class PDFParser:
         elif any(self._compact(token) in compact_context for token in ("主要会计数据和财务指标", "主要会计数据", "主要财务指标")):
             if any(token in compact_body for token in map(self._compact, core_indicator_tokens)):
                 candidates.append("core_performance_indicators_sheet")
-        if "合并资产负债表" in compact_context:
+        if "合并资产负债表" in compact_context and not any(token in combined_compact for token in map(self._compact, EXCLUDED_STATEMENT_KEYWORDS)):
             candidates.append("balance_sheet")
-        if any(token in compact_body for token in ("负债合计", "所有者权益合计", "股东权益合计")):
+        if any(token in compact_body for token in ("负债合计", "所有者权益合计", "股东权益合计", "资产总计", "资产总额")) and not any(token in combined_compact for token in ("营业收入", "利润总额", "经营活动产生的现金流量净额")):
             candidates.append("balance_sheet")
         if any(token in compact_context for token in ("合并利润表", "合并年初到报告期末利润表")):
             candidates.append("income_sheet")
+        elif ("金额" in compact_body and any(token in compact_body for token in ("营业收入", "营业收入合计", "营业收入总额", "手续费及佣金净收入", "利润总额", "净利润")) and any(token in compact_body for token in ("所得税费用", "营业利润", "营业支出", "信用减值损失"))):
+            candidates.append("income_sheet")
         if any(token in compact_context for token in ("合并现金流量表", "合并年初到报告期末现金流量表")):
+            candidates.append("cash_flow_sheet")
+        elif ("小计" in compact_body and any(token in compact_body for token in ("经营活动产生的现金流量净额", "现金及现金等价物净增加额", "投资活动产生的现金流量净额", "筹资活动产生的现金流量净额"))):
             candidates.append("cash_flow_sheet")
         if not candidates:
             if "流动资产" in table_header and any(token in compact_body for token in ("货币资金", "资产总计")):
                 candidates.append("balance_sheet")
-            if any(token in table_header for token in ("营业收入", "营业总收入")) and "利润总额" in compact_body:
+            if any(token in table_header for token in ("营业收入", "营业总收入", "手续费及佣金净收入")) and "利润总额" in compact_body:
                 candidates.append("income_sheet")
-            if any(token in table_header for token in ("销售商品", "经营活动产生的现金流量净额")):
+            if any(token in table_header for token in ("销售商品", "经营活动产生的现金流量净额", "现金及现金等价物净增加额")):
                 candidates.append("cash_flow_sheet")
 
         for table_type in dict.fromkeys(candidates):
@@ -270,6 +279,17 @@ class PDFParser:
     @staticmethod
     def _compact(text: str) -> str:
         return re.sub(r"\s+", "", text)
+
+    @staticmethod
+    def _count_data_rows(table: ParsedTable) -> int:
+        count = 0
+        for row in table.raw_rows:
+            if not row:
+                continue
+            non_empty = [str(cell).strip() for cell in row if cell not in (None, "") and str(cell).strip()]
+            if len(non_empty) >= 2:
+                count += 1
+        return count
 
     @staticmethod
     def _has_parent_company_marker(table: ParsedTable) -> bool:
