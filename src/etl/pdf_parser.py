@@ -24,7 +24,7 @@ PERIOD_MAP = {
 }
 
 HEAD_PAGE_LIMIT = 20
-FULL_SCAN_PAGE_LIMIT = 120
+FULL_SCAN_PAGE_LIMIT = 200
 
 TABLE_TITLE_PATTERNS = {
     "core_performance_indicators_sheet": ["主要会计数据", "主要财务指标", "分季度主要财务指标"],
@@ -163,18 +163,20 @@ class PDFParser:
     def _infer_sse_period_from_filename_date(self, file_date: str) -> tuple[int, str, bool]:
         year = int(file_date[:4])
         month = int(file_date[4:6])
-        if month == 4:
+        if month == 3:
+            report_year = year
+            suffix = "Q1"
+        elif month == 4:
             report_year = year - 1
             suffix = "FY"
-        elif month == 8:
+        elif month in {7, 8}:
             report_year = year
             suffix = "HY"
         elif month == 10:
             report_year = year
             suffix = "Q3"
         else:
-            report_year = year
-            suffix = "Q1"
+            raise ValueError(f"Cannot infer SSE report period from filename date: {file_date}")
         return report_year, f"{report_year}{suffix}", False
 
     @staticmethod

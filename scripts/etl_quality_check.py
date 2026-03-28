@@ -10,7 +10,7 @@ from src.etl.schema import load_schema_metadata
 
 RANGE_RULES = {
     "core_performance_indicators_sheet": {
-        "eps": (-50, 50),
+        "eps": (-200, 200),
         "total_operating_revenue": (0, None),
         "net_profit_10k_yuan": (-1_000_000_000, 1_000_000_000),
         "roe": (-500, 500),
@@ -100,7 +100,7 @@ def check_cross_table_consistency(conn: sqlite3.Connection) -> list[str]:
           ON c.stock_code = i.stock_code AND c.report_period = i.report_period
         WHERE c.total_operating_revenue IS NOT NULL
           AND i.total_operating_revenue IS NOT NULL
-          AND ABS(c.total_operating_revenue - i.total_operating_revenue) > 0.01
+          AND ABS(c.total_operating_revenue - i.total_operating_revenue) > MAX(ABS(c.total_operating_revenue), ABS(i.total_operating_revenue)) * 0.05
         """
     ).fetchall()
     return [

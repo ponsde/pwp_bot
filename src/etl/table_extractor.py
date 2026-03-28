@@ -20,10 +20,14 @@ INCOME_ALIASES = {
     "归属于母公司所有者的净利润": "net_profit",
     "归属于母公司股东的净利润": "net_profit",
     "归属于上市公司股东的净利润": "net_profit",
+    "归属于本行股东的净利润": "net_profit",
+    "归属于本行股东": "net_profit",
     "归属于上市公司股东": "net_profit",
     "归属母公司净利润": "net_profit",
     "营业收入": "total_operating_revenue",
+    "营业收入合计": "total_operating_revenue",
     "营业总收入": "total_operating_revenue",
+    "利息净收入": "total_operating_revenue",
     "营业成本": "operating_expense_cost_of_sales",
     "销售费用": "operating_expense_selling_expenses",
     "管理费用": "operating_expense_administrative_expenses",
@@ -43,6 +47,7 @@ INCOME_ALIASES = {
 
 BALANCE_ALIASES = {
     "货币资金": "asset_cash_and_cash_equivalents",
+    "现金及存放中央银行款项": "asset_cash_and_cash_equivalents",
     "应收账款": "asset_accounts_receivable",
     "应收帐款": "asset_accounts_receivable",
     "存货": "asset_inventory",
@@ -73,10 +78,12 @@ BALANCE_ALIASES = {
 CASHFLOW_ALIASES = {
     "现金及现金等价物净增加额": "net_cash_flow",
     "现金及现金等价物的净增加额": "net_cash_flow",
+    "现金及现金等价物净增加减少额": "net_cash_flow",
     "经营活动产生的现金流量净额": "operating_cf_net_amount",
     "销售商品、提供劳务收到的现金": "operating_cf_cash_from_sales",
     "销售商品及提供劳务收到的现金": "operating_cf_cash_from_sales",
     "销售商品提供劳务收到的现金": "operating_cf_cash_from_sales",
+    "收取利息手续费及佣金的现金": "operating_cf_cash_from_sales",
     "投资活动产生的现金流量净额": "investing_cf_net_amount",
     "投资支付的现金": "investing_cf_cash_for_investments",
     "收回投资收到的现金": "investing_cf_cash_from_investment_recovery",
@@ -95,17 +102,21 @@ CORE_ALIASES = {
     "营业收入": "total_operating_revenue",
     "营业收入元": "total_operating_revenue",
     "营业总收入": "total_operating_revenue",
+    "营业收入合计": "total_operating_revenue",
     "归属于上市公司股东的净利润": "net_profit_10k_yuan",
     "归属于上市公司股东的净利润元": "net_profit_10k_yuan",
     "归属于上市公司股东": "net_profit_10k_yuan",
     "归属于母公司所有者的净利润": "net_profit_10k_yuan",
     "归属于母公司股东的净利润": "net_profit_10k_yuan",
+    "归属于本行股东的净利润": "net_profit_10k_yuan",
+    "归属于本行股东": "net_profit_10k_yuan",
     "归属母公司净利润": "net_profit_10k_yuan",
     "净利润": "net_profit_10k_yuan",
     "归属于上市公司股东的扣除非经常性损益的净利润": "net_profit_excl_non_recurring",
     "归属于上市公司股东的扣除非经常性损益的净利润元": "net_profit_excl_non_recurring",
     "归属于上市公司股东的扣除非经常": "net_profit_excl_non_recurring",
     "扣除非经常性损益后归属于母公司所有者的净利润": "net_profit_excl_non_recurring",
+    "扣除非经常性损益后归属于本行股东的净利润": "net_profit_excl_non_recurring",
     "扣非净利润": "net_profit_excl_non_recurring",
     "归属于上市公司股东的每股净资产": "net_asset_per_share",
     "每股净资产": "net_asset_per_share",
@@ -285,7 +296,7 @@ class TableExtractor:
             core["total_operating_revenue"] = revenue
         if core.get("net_profit_10k_yuan") is None and net_profit is not None:
             core["net_profit_10k_yuan"] = net_profit
-        if core.get("gross_profit_margin") is None and revenue not in (None, 0) and cost_of_sales is not None:
+        if core.get("gross_profit_margin") is None and revenue not in (None, 0) and cost_of_sales not in (None, 0):
             core["gross_profit_margin"] = round((revenue - cost_of_sales) / revenue * 100, 4)
         if core.get("net_profit_margin") is None and revenue not in (None, 0) and net_profit is not None:
             core["net_profit_margin"] = round(net_profit / revenue * 100, 4)
@@ -296,6 +307,9 @@ class TableExtractor:
             core["operating_cf_per_share"] = round((operating_cf_net_amount * 10000) / share_capital, 4)
         if core.get("net_asset_per_share") is None and balance.get("equity_total_equity") is not None and share_capital not in (None, 0):
             core["net_asset_per_share"] = round((balance["equity_total_equity"] * 10000) / share_capital, 4)
+
+        if balance.get("asset_total_assets") is not None and balance.get("liability_total_liabilities") is not None and balance.get("equity_total_equity") is None:
+            balance["equity_total_equity"] = round(balance["asset_total_assets"] - balance["liability_total_liabilities"], 2)
 
         if core.get("roe") is None and core.get("net_profit_10k_yuan") is not None and balance.get("equity_total_equity") not in (None, 0):
             core["roe"] = round(core["net_profit_10k_yuan"] / balance["equity_total_equity"] * 100, 4)
@@ -313,8 +327,6 @@ class TableExtractor:
             total_liabilities = balance["liability_total_liabilities"]
             if total_assets:
                 balance["asset_liability_ratio"] = round(total_liabilities / total_assets * 100, 4)
-            if balance.get("equity_total_equity") is None:
-                balance["equity_total_equity"] = round(total_assets - total_liabilities, 2)
 
         cash = records["cash_flow_sheet"]
         net_cash_flow = cash.get("net_cash_flow")
@@ -348,12 +360,18 @@ class TableExtractor:
 
     @staticmethod
     def _find_first_numeric(cells: list[str]) -> str | None:
+        numerics: list[str] = []
         for cell in cells:
             compact = cell.replace(" ", "").replace("\n", "")
             m = NUMERIC_RE.fullmatch(compact)
             if m:
-                return compact
-        return None
+                numerics.append(compact)
+        if not numerics:
+            return None
+        # Skip note references: small integers (1-99) when followed by a larger value
+        if len(numerics) >= 2 and numerics[0].isdigit() and int(numerics[0]) <= 99:
+            return numerics[1]
+        return numerics[0]
 
     def _select_core_value(self, row: list[str], header: list[str], period_key: str, year: str = "") -> str | None:
         numeric_cells = [(idx, cell) for idx, cell in enumerate(row[1:], start=1) if cell and self._is_numeric_text(cell)]

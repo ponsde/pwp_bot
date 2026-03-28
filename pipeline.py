@@ -40,17 +40,29 @@ def run_etl(input_dir: str, db_path: str) -> dict[str, object]:
     results = []
     for pdf_path in pdf_paths:
         try:
-            results.append(loader.load_pdf(pdf_path))
+            result = loader.load_pdf(pdf_path)
         except Exception as exc:
-            results.append({"status": "error", "file": str(pdf_path), "error": str(exc)})
+            result = {"status": "error", "file": str(pdf_path), "error": str(exc), "reason": str(exc)}
+        else:
+            if "reason" not in result:
+                if result["status"] == "loaded":
+                    result["reason"] = "ok"
+                elif result["status"] == "skipped":
+                    result["reason"] = result.get("reason", "skipped")
+                elif result["status"] == "rejected":
+                    warnings = result.get("warnings") or []
+                    result["reason"] = "; ".join(warnings) if warnings else "validation_failed"
+        results.append(result)
+        logger.info("ETL %s | %s | %s", result.get("status"), result.get("file"), result.get("reason", ""))
     return {
-        "status": "completed",
+        "status": "completed_with_errors" if any(r["status"] in {"error", "rejected"} for r in results) else "completed",
         "db_path": db_path,
         "input_dir": input_dir,
         "processed": len(results),
         "loaded": sum(1 for r in results if r["status"] == "loaded"),
         "skipped": sum(1 for r in results if r["status"] == "skipped"),
         "rejected": sum(1 for r in results if r["status"] == "rejected"),
+        "error": sum(1 for r in results if r["status"] == "error"),
         "results": results,
     }
 

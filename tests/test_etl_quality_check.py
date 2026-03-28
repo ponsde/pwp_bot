@@ -32,7 +32,7 @@ def test_etl_quality_check_detects_issues_and_reports_coverage(tmp_path: Path) -
             "INSERT INTO core_performance_indicators_sheet VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
                 (1, "000001", "示例", "2023FY", 2023, 0.5, 100.0, 10.0, 8.0, None, None, None, 5.0, 4.0),
-                (1, "000001", "示例", "2024FY", 2024, 99.0, 120.0, 12.0, 9.0, 20.0, 20.0, 12.5, 6.0, 4.5),
+                (1, "000001", "示例", "2024FY", 2024, 999.0, 120.0, 12.0, 9.0, 20.0, 20.0, 12.5, 6.0, 4.5),
             ],
         )
         conn.executemany(
