@@ -77,12 +77,15 @@ class PDFParser:
 
     def parse(self, pdf_path: str | Path) -> ParsedPDF:
         path = Path(pdf_path)
-        if "深交所" in str(path.parent):
+        # Detect format by filename pattern, not directory name
+        if SZSE_RE.search(path.name):
             meta = self._parse_szse_meta(path)
             exchange = "SZSE"
-        else:
+        elif SSE_FILE_RE.search(path.name):
             meta = self._parse_sse_meta(path)
             exchange = "SSE"
+        else:
+            raise ValueError(f"Unrecognized file name format: {path.name}")
         meta["exchange"] = exchange
 
         page_texts: list[str] = []
@@ -115,7 +118,8 @@ class PDFParser:
         stock_abbr = m.group("abbr")
         info = self.company_mapping.get(stock_abbr)
         if not info:
-            raise ValueError(f"Unknown company: {stock_abbr} (not in 附件1)")
+            # Try to extract stock_code from PDF content
+            info = self._extract_company_from_pdf(path, stock_abbr)
         period_name = m.group("period")
         year = int(m.group("year"))
         is_summary = "摘要" in period_name
@@ -135,7 +139,7 @@ class PDFParser:
         stock_code = m.group("code")
         info = self.company_mapping.get(stock_code)
         if not info:
-            raise ValueError(f"Unknown stock_code: {stock_code} (not in 附件1)")
+            info = {"stock_code": stock_code, "stock_abbr": stock_code}
         file_date = m.group("date")
         with pdfplumber.open(path) as pdf:
             first_text = "\n".join((pdf.pages[i].extract_text() or "") for i in range(min(2, len(pdf.pages))))
@@ -172,6 +176,18 @@ class PDFParser:
             report_year = year
             suffix = "Q1"
         return report_year, f"{report_year}{suffix}", False
+
+    @staticmethod
+    def _extract_company_from_pdf(path: Path, stock_abbr: str) -> dict[str, str]:
+        """Extract stock_code from PDF content for unknown companies."""
+        code_re = re.compile(r"(?:证券代码|股票代码|公司代码)[：:\s]*(\d{6})")
+        with pdfplumber.open(path) as pdf:
+            for i in range(min(10, len(pdf.pages))):
+                text = pdf.pages[i].extract_text() or ""
+                m = code_re.search(text)
+                if m:
+                    return {"stock_code": m.group(1), "stock_abbr": stock_abbr}
+        raise ValueError(f"Unknown company: {stock_abbr} (not in 附件1, and could not extract stock_code from PDF)")
 
     def _guess_title(self, page_text: str) -> str | None:
         for titles in TABLE_TITLE_PATTERNS.values():
