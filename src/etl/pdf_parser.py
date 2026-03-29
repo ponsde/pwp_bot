@@ -198,7 +198,12 @@ class PDFParser:
 
     def _classify_table(self, table: ParsedTable, previous_text: str = "") -> str | None:
         if self._count_data_rows(table) < 3:
-            return None
+            compact_preview = self._compact(self._table_rows_text(table, max_rows=12) + (table.title or "") + table.text[:500] + previous_text[-300:])
+            if not (
+                any(token in compact_preview for token in ("合并现金流量表", "销售商品", "经营活动产生的现金流量"))
+                and any(token in compact_preview for token in ("2023年度", "2022年度", "本期发生额", "本期数", "现金流量"))
+            ):
+                return None
 
         table_header = self._table_first_rows_text(table)
         table_body = self._table_rows_text(table, max_rows=12)
@@ -242,6 +247,11 @@ class PDFParser:
         elif ("金额" in compact_body and any(token in compact_body for token in ("营业收入", "营业收入合计", "营业收入总额", "手续费及佣金净收入", "利润总额", "净利润")) and any(token in compact_body for token in ("所得税费用", "营业利润", "营业支出", "信用减值损失"))):
             candidates.append("income_sheet")
         if any(token in compact_context for token in ("合并现金流量表", "合并年初到报告期末现金流量表")):
+            candidates.append("cash_flow_sheet")
+        elif (
+            any(token in compact_body for token in ("经营活动产生的现金流量净额", "现金及现金等价物净增加额", "现金及现金等价物的净增加额", "投资活动产生的现金流量净额", "筹资活动产生的现金流量净额"))
+            and any(token in combined_compact for token in ("销售商品", "购买商品", "收回投资收到的现金", "取得借款收到的现金", "现金流入小计", "现金流出小计"))
+        ):
             candidates.append("cash_flow_sheet")
         elif ("小计" in compact_body and any(token in compact_body for token in ("经营活动产生的现金流量净额", "现金及现金等价物净增加额", "投资活动产生的现金流量净额", "筹资活动产生的现金流量净额"))):
             candidates.append("cash_flow_sheet")
@@ -305,32 +315,88 @@ class PDFParser:
     def _merge_cross_page_tables(self, tables: list[ParsedTable]) -> list[ParsedTable]:
         merged: list[ParsedTable] = []
         last_merged_page: int = 0
+        pending_cross_page: ParsedTable | None = None
         for table in tables:
             if not merged:
                 merged.append(table)
                 last_merged_page = table.page_number
+                pending_cross_page = table if table.table_type else None
                 continue
             prev = merged[-1]
             same_page = table.page_number == prev.page_number
             near_page = table.page_number - last_merged_page <= 3 and table.page_number > prev.page_number
             if same_page:
-                merged.append(table)
+                if prev.table_type is None and table.table_type and not self._has_parent_company_marker(table):
+                    if table.page_number == prev.page_number and table.page_number > 1 and any(token in self._compact((table.title or "") + self._table_first_rows_text(table)) for token in ("合并现金流量表", "现金流量净额", "销售商品")):
+                        leading_rows = self._extract_trailing_context_rows(prev)
+                    else:
+                        leading_rows = self._leading_non_numeric_rows(prev)
+                    if leading_rows:
+                        table.raw_rows = leading_rows + table.raw_rows
+                    merged.append(table)
+                    pending_cross_page = table
+                elif prev.table_type and table.table_type is None and not self._has_distinct_confirmation(prev.table_type, table) and not self._has_parent_company_marker(table):
+                    table.table_type = prev.table_type
+                    prev.raw_rows.extend(table.raw_rows)
+                    prev.text += "\n" + table.text
+                    pending_cross_page = prev
+                else:
+                    merged.append(table)
+                    pending_cross_page = table if table.table_type else pending_cross_page
                 last_merged_page = table.page_number
                 continue
             if prev.table_type and table.table_type == prev.table_type and near_page:
                 prev.raw_rows.extend(table.raw_rows)
                 prev.text += "\n" + table.text
                 last_merged_page = table.page_number
+                pending_cross_page = prev
                 continue
             if prev.table_type and table.table_type is None and near_page and not self._has_distinct_confirmation(prev.table_type, table) and not self._has_parent_company_marker(table):
                 table.table_type = prev.table_type
                 prev.raw_rows.extend(table.raw_rows)
                 prev.text += "\n" + table.text
                 last_merged_page = table.page_number
+                pending_cross_page = prev
+                continue
+            if (
+                pending_cross_page
+                and table.table_type == pending_cross_page.table_type
+                and table.page_number > pending_cross_page.page_number
+                and table.page_number - pending_cross_page.page_number <= 3
+            ):
+                pending_cross_page.raw_rows.extend(table.raw_rows)
+                pending_cross_page.text += "\n" + table.text
+                last_merged_page = table.page_number
                 continue
             merged.append(table)
             last_merged_page = table.page_number
+            pending_cross_page = table if table.table_type else pending_cross_page
         return merged
+
+    @staticmethod
+    def _extract_trailing_context_rows(table: ParsedTable, max_rows: int = 12) -> list[list[Any]]:
+        context_rows: list[list[Any]] = []
+        capture = False
+        for row in table.raw_rows[-max_rows:]:
+            row_text = "".join(str(cell) for cell in row if cell)
+            compact = re.sub(r"\s+", "", row_text)
+            if not capture and any(token in compact for token in ("合并现金流量表", "现金流量表", "项目附注", "项目2023年度", "项目2024年度")):
+                capture = True
+            if capture:
+                context_rows.append(row)
+        return context_rows
+
+    @staticmethod
+    def _leading_non_numeric_rows(table: ParsedTable, max_rows: int = 8) -> list[list[Any]]:
+        rows: list[list[Any]] = []
+        for row in table.raw_rows[:max_rows]:
+            cells = [str(cell).strip() for cell in row if cell not in (None, "") and str(cell).strip()]
+            if not cells:
+                continue
+            if any(re.fullmatch(r"-?\d+(?:,\d{3})*(?:\.\d+)?", cell.replace("\n", "")) for cell in cells):
+                break
+            rows.append(row)
+        return rows
 
     def _has_distinct_confirmation(self, table_type: str, table: ParsedTable) -> bool:
         context = self._compact(self._table_first_rows_text(table))
