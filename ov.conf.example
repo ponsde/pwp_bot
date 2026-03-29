@@ -1,0 +1,22 @@
+{
+  "storage": {
+    "agfs": {
+      "port": 1834
+    }
+  },
+  "embedding": {
+    "dense": {
+      "api_base": "{your-api-base}",
+      "api_key": "{your-api-key}",
+      "provider": "openai",
+      "dimension": 1024,
+      "model": "BAAI/bge-m3"
+    }
+  },
+  "vlm": {
+    "api_base": "{your-api-base}",
+    "api_key": "{your-api-key}",
+    "provider": "openai",
+    "model": "{your-vlm-model}"
+  }
+}

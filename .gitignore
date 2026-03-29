@@ -27,6 +27,10 @@ result/*.xlsx
 # Worktrees
 .worktrees/
 
+# OpenViking (contains API keys and index data)
+ov.conf
+.openviking/
+
 # Local-only: Claude instructions, OpenSpec artifacts, AI context
 CLAUDE.md
 PLAN.md

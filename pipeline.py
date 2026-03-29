@@ -8,7 +8,7 @@ from pathlib import Path
 
 import openpyxl
 
-from config import REPORTS_DIR
+from config import OV_CONFIG_PATH, OV_DATA_DIR, REPORTS_DIR, RESEARCH_QUESTIONS_XLSX
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +83,63 @@ def _load_questions_xlsx(path: str) -> list[dict]:
         questions.append({"id": question_id, "turns": turns})
     return questions
 
+
+def _load_research_questions_xlsx(path: str) -> list[dict]:
+    """Read research questions xlsx (附件6 format): columns 编号, 问题类型, 问题."""
+    wb = openpyxl.load_workbook(path, read_only=True)
+    ws = wb.active
+    rows = list(ws.iter_rows(min_row=2, values_only=True))
+    wb.close()
+    questions = []
+    for row in rows:
+        if not row or not row[0]:
+            continue
+        questions.append({
+            "id": str(row[0]).strip(),
+            "question_type": str(row[1]).strip() if row[1] else "",
+            "turns": json.loads(str(row[2]).strip()) if row[2] else [],
+        })
+    return questions
+
+
+def run_research(questions_path: str, db_path: str, output_xlsx: str) -> str:
+    import pandas as pd
+
+    from src.knowledge.ov_adapter import init_client
+    from src.knowledge.research_loader import load_research_documents
+    from src.knowledge.research_qa import ResearchQAEngine, format_research_answer_payload
+    from src.query.conversation import ConversationManager
+
+    client = init_client(data_path=OV_DATA_DIR, config_path=OV_CONFIG_PATH)
+    load_research_documents(client)
+    engine = ResearchQAEngine(db_path=db_path, client=client, llm_client=_build_llm_client())
+    rows = []
+    for item in _load_research_questions_xlsx(questions_path):
+        sql_parts = []
+        answer_payloads = []
+        chart_type = "无"
+        conversation = ConversationManager()
+        for turn in item["turns"]:
+            question = turn["Q"]
+            conversation.add_user_message(question)
+            answer = engine.answer_question(question, conversation)
+            if answer.sql:
+                sql_parts.append(answer.sql)
+            if answer.chart_type and answer.chart_type != "无":
+                chart_type = answer.chart_type
+            answer_payloads.append(json.loads(format_research_answer_payload(answer)))
+            conversation.add_assistant_message(answer.answer)
+        rows.append({
+            "编号": item["id"],
+            "问题": json.dumps(item["turns"], ensure_ascii=False),
+            "SQL查询语句": "\n\n".join(sql_parts),
+            "图形格式": chart_type,
+            "回答": json.dumps(answer_payloads, ensure_ascii=False),
+        })
+    path = Path(output_xlsx)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(rows).to_excel(path, index=False)
+    return str(path)
 
 def _build_llm_client():
     from src.llm.client import LLMClient
@@ -197,7 +254,7 @@ def _write_grouped_result_xlsx(grouped: list[dict], output_path: str) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Financial Report QA Pipeline")
-    parser.add_argument("--task", choices=["etl", "answer"], required=True)
+    parser.add_argument("--task", choices=["etl", "answer", "research"], required=True)
     parser.add_argument("--db-path", default="data/db/finance.db")
     parser.add_argument("--input", default=str(REPORTS_DIR), help="PDF directory for ETL")
     parser.add_argument("--questions", default=None, help="Questions xlsx for answer task")
@@ -207,10 +264,13 @@ def main() -> None:
     Path(args.db_path).parent.mkdir(parents=True, exist_ok=True)
     if args.task == "etl":
         print(json.dumps(run_etl(args.input, args.db_path), ensure_ascii=False, indent=2))
-    else:
+    elif args.task == "answer":
         if not args.questions:
             raise SystemExit("--questions is required for answer task")
         print(run_answer(args.questions, args.db_path, args.output))
+    else:
+        questions = args.questions or str(RESEARCH_QUESTIONS_XLSX)
+        print(run_research(questions, args.db_path, args.output))
 
 
 if __name__ == "__main__":
