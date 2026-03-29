@@ -13,8 +13,9 @@ class FakeResearchAnswer:
         self.route = 'rag'
         self.answer = '根据研报，国家医保目录新增多个中药产品。'
         self.sql = ''
-        self.chart_type = '无'
-        self.references = [type('Ref', (), {'paper_path': 'paper.pdf', 'text': '研报段落', 'paper_image': ''})()]
+        self.chart_type = 'bar'
+        self.chart_rows = [{'report_period': '2025Q1', 'total_operating_revenue': 100.0}, {'report_period': '2025Q2', 'total_operating_revenue': 120.0}]
+        self.references = [type('Ref', (), {'paper_path': './附件5：研报数据/个股研报/paper.pdf', 'text': '研报段落', 'paper_image': ''})()]
 
 
 def test_pipeline_research_end_to_end(tmp_path: Path, monkeypatch):
@@ -29,7 +30,7 @@ def test_pipeline_research_end_to_end(tmp_path: Path, monkeypatch):
 
     questions = tmp_path / 'questions.xlsx'
     pd.DataFrame([
-        {'编号': 'B2002', '问题类型': '意图模糊', '问题': json.dumps([{'Q': '国家医保目录新增的中药产品有哪些'}], ensure_ascii=False)}
+        {'编号': 'B2002', '问题类型': '意图模糊', '问题': json.dumps([{'Q': '国家医保目录新增的中药产品有哪些并可视化展示'}], ensure_ascii=False)}
     ]).to_excel(questions, index=False)
 
     import pipeline as pipeline_module
@@ -43,10 +44,13 @@ def test_pipeline_research_end_to_end(tmp_path: Path, monkeypatch):
             return FakeResearchAnswer(question)
 
     monkeypatch.setattr('src.knowledge.research_qa.ResearchQAEngine', FakeQA)
+    monkeypatch.setattr('src.knowledge.research_loader.load_research_documents', lambda client: [])
 
     output = tmp_path / 'result_3.xlsx'
     run_research(str(questions), str(db_path), str(output))
     result_df = pd.read_excel(output)
     payload = json.loads(result_df.loc[0, '回答'])
     assert output.exists()
-    assert payload[0]['references'][0]['paper_path'] == 'paper.pdf'
+    assert payload[0]['references'][0]['paper_path'] == './附件5：研报数据/个股研报/paper.pdf'
+    assert result_df.loc[0, '图形格式'] == 'bar'
+    assert Path(payload[0]['image'][0]).exists()

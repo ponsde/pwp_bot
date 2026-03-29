@@ -108,6 +108,7 @@ def run_research(questions_path: str, db_path: str, output_xlsx: str) -> str:
     from src.knowledge.ov_adapter import init_client
     from src.knowledge.research_loader import load_research_documents
     from src.knowledge.research_qa import ResearchQAEngine, format_research_answer_payload
+    from src.query.chart import render_chart
     from src.query.conversation import ConversationManager
 
     client = init_client(data_path=OV_DATA_DIR, config_path=OV_CONFIG_PATH)
@@ -119,7 +120,8 @@ def run_research(questions_path: str, db_path: str, output_xlsx: str) -> str:
         answer_payloads = []
         chart_type = "无"
         conversation = ConversationManager()
-        for turn in item["turns"]:
+        for turn_index, turn in enumerate(item["turns"], start=1):
+            chart_image: str | None = None
             question = turn["Q"]
             conversation.add_user_message(question)
             answer = engine.answer_question(question, conversation)
@@ -127,7 +129,19 @@ def run_research(questions_path: str, db_path: str, output_xlsx: str) -> str:
                 sql_parts.append(answer.sql)
             if answer.chart_type and answer.chart_type != "无":
                 chart_type = answer.chart_type
-            answer_payloads.append(json.loads(format_research_answer_payload(answer)))
+                chart_rows = getattr(answer, "chart_rows", [])
+                if chart_rows:
+                    chart_data = _safe_chart_data(chart_rows)
+                    chart_image = render_chart(
+                        answer.chart_type,
+                        chart_data,
+                        f"result/{item['id']}_{turn_index}.jpg",
+                        question,
+                    ) if chart_data else None
+            answer_payload = json.loads(format_research_answer_payload(answer))
+            if chart_image:
+                answer_payload.setdefault("image", [chart_image])
+            answer_payloads.append(answer_payload)
             conversation.add_assistant_message(answer.answer)
         rows.append({
             "编号": item["id"],

@@ -29,6 +29,7 @@ class ResearchAnswer:
     sql: str
     chart_type: str
     references: list[ResearchReference]
+    chart_rows: list[dict[str, Any]] | None = None
 
 
 class ResearchQAEngine:
@@ -97,8 +98,13 @@ class ResearchQAEngine:
         answer_parts: list[str] = []
         chart_rows: list[dict[str, Any]] = []
         manager = conversation or ConversationManager()
+        seen_signatures: set[tuple[str, str]] = set()
         for sub_question in sub_questions:
             result = self.sql_engine.query(sub_question, manager)
+            signature = (result.sql or "", json.dumps(result.rows, ensure_ascii=False, sort_keys=True))
+            if signature in seen_signatures:
+                continue
+            seen_signatures.add(signature)
             if result.sql:
                 sql_parts.append(result.sql)
             answer_parts.append(self._format_sql_result(sub_question, result))
@@ -111,6 +117,7 @@ class ResearchQAEngine:
             sql="\n\n".join(sql_parts),
             chart_type=self._select_chart_type(question, chart_rows),
             references=[],
+            chart_rows=chart_rows,
         )
 
     def _answer_rag(self, question: str) -> ResearchAnswer:
@@ -123,25 +130,36 @@ class ResearchQAEngine:
             sql="",
             chart_type=self._select_chart_type(question, []),
             references=references,
+            chart_rows=[],
         )
 
     def _answer_hybrid(self, question: str, conversation: ConversationManager | None = None) -> ResearchAnswer:
         manager = conversation or ConversationManager()
         data_question = self._extract_sql_subquestion(question)
         sql_result = self.sql_engine.query(data_question, manager)
-        sql_answer = self._format_sql_result(data_question, sql_result)
         rag_query = self._build_hybrid_rag_query(question, data_question, sql_result)
         rag_items = self.retriever.search(rag_query, top_k=5)
-        rag_answer = self._compose_rag_answer(question, rag_items)
         references = [ResearchReference(paper_path=item.paper_path, text=item.text) for item in rag_items]
-        answer = f"{sql_answer}\n{rag_answer}".strip()
+
+        sql_unavailable = (
+            (sql_result.clarification_question or "请补充信息。") if sql_result.needs_clarification
+            else sql_result.error if sql_result.error
+            else None
+        )
+        rag_text = self._compose_rag_answer(question, rag_items)
+        rag_answer = (
+            f"SQL 数据暂不可用（{sql_unavailable}）。以下为基于研报的补充说明：\n{rag_text}"
+            if sql_unavailable else rag_text
+        )
+
         return ResearchAnswer(
             question=question,
             route="hybrid",
-            answer=answer,
+            answer=rag_answer.strip(),
             sql=sql_result.sql or "",
             chart_type=self._select_chart_type(question, sql_result.rows),
             references=references,
+            chart_rows=sql_result.rows,
         )
 
     def _compose_rag_answer(self, question: str, items: list[RetrievalItem]) -> str:
@@ -161,10 +179,7 @@ class ResearchQAEngine:
             return result.clarification_question or "请补充信息。"
         if result.error:
             return result.error
-        content = build_answer_content(question, result.rows)
-        if result.warning:
-            content += f"\n（注：{result.warning}）"
-        return content
+        return build_answer_content(question, result.rows)
 
     def _heuristic_split_multi_intent(self, question: str) -> list[str]:
         normalized = question.strip()

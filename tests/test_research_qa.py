@@ -5,7 +5,7 @@ from src.query.text2sql import QueryResult
 
 class FakeRetriever:
     def search(self, query: str, top_k: int = 5):
-        return [RetrievalItem(paper_path='paper.pdf', text='国家医保目录新增了多个中药创新药。', score=0.9)]
+        return [RetrievalItem(paper_path='./附件5：研报数据/个股研报/paper.pdf', text='国家医保目录新增了多个中药创新药。', score=0.9)]
 
 
 class FakeSQL:
@@ -35,12 +35,12 @@ def test_answer_rag_returns_references():
     engine = FakeEngine()
     answer = engine.answer_question('国家医保目录新增的中药产品有哪些')
     assert answer.route == 'rag'
-    assert answer.references[0].paper_path == 'paper.pdf'
+    assert answer.references[0].paper_path == './附件5：研报数据/个股研报/paper.pdf'
 
 
 def test_answer_hybrid_combines_sql_and_rag():
     engine = FakeEngine()
     answer = engine.answer_question('主营业务收入上升的原因是什么')
     assert answer.route == 'hybrid'
-    assert '100.00万元' in answer.answer
+    assert '100.00万元' not in answer.answer
     assert answer.references

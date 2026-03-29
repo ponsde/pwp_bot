@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -50,11 +51,9 @@ def store_resource(client: Any, pdf_path: str | Path) -> str:
 
 def _extract_matched_contexts(raw: Any) -> list[Any]:
     """Extract MatchedContext items from OV FindResult or fallback to raw."""
-    # OV FindResult has .resources (research content) and .memories (system)
     resources = getattr(raw, "resources", None)
     if isinstance(resources, list) and resources:
         return resources
-    # Fallback: plain list or dict
     if isinstance(raw, list):
         return raw
     if isinstance(raw, dict):
@@ -69,19 +68,46 @@ def _extract_matched_contexts(raw: Any) -> list[Any]:
 
 def _normalize_item(item: Any) -> dict[str, Any]:
     """Normalize a single search result item (MatchedContext or dict)."""
-    # OV MatchedContext: has .uri, .score, .context/.abstract/.overview
     uri = getattr(item, "uri", None)
     if uri is not None:
         text = getattr(item, "context", None) or getattr(item, "abstract", None) or getattr(item, "overview", None) or ""
         score = getattr(item, "score", 0.0)
         return {"text": str(text), "source": str(uri), "score": float(score or 0.0), "raw": item}
-    # Plain dict
     if isinstance(item, dict):
         text = item.get("text") or item.get("content") or item.get("chunk") or ""
         source = item.get("source") or item.get("uri") or item.get("path") or ""
         score = item.get("score") or item.get("similarity") or 0.0
         return {"text": str(text), "source": str(source), "score": float(score or 0.0), "raw": item}
     return {"text": str(item), "source": "", "score": 0.0, "raw": item}
+
+
+def _extract_snippet(text: str, query: str, min_len: int = 200, max_len: int = 500) -> str:
+    normalized = re.sub(r"\s+", " ", str(text or "")).strip()
+    if not normalized:
+        return ""
+    if len(normalized) <= max_len:
+        return normalized
+
+    tokens = [token for token in re.split(r"[^\w\u4e00-\u9fff]+", query) if len(token) >= 2]
+    hit = -1
+    for token in tokens:
+        hit = normalized.find(token)
+        if hit >= 0:
+            break
+    if hit < 0:
+        hit = 0
+
+    start = max(0, hit - max_len // 3)
+    end = min(len(normalized), start + max_len)
+    snippet = normalized[start:end]
+
+    if start > 0:
+        left_boundary = max(snippet.find(sep) for sep in ("。", "；", "\n") if snippet.find(sep) >= 0)
+        if left_boundary > 0:
+            snippet = snippet[left_boundary + 1 :]
+    if len(snippet) < min_len and end < len(normalized):
+        snippet = normalized[start : min(len(normalized), start + min_len)]
+    return snippet.strip()[:max_len]
 
 
 def search(client: Any, query: str, top_k: int = 5) -> list[dict[str, Any]]:
@@ -95,14 +121,6 @@ def search(client: Any, query: str, top_k: int = 5) -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
     for item in items[:top_k]:
         normalized = _normalize_item(item)
-        # OV MatchedContext.context is a VLM summary; read actual content
-        uri = getattr(item, "uri", None)
-        if uri:
-            try:
-                content = client.read(str(uri))
-                if content and isinstance(content, str):
-                    normalized["text"] = content.strip()
-            except Exception:
-                pass
+        normalized["text"] = _extract_snippet(normalized.get("text", ""), query)
         results.append(normalized)
     return results
