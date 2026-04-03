@@ -167,7 +167,14 @@ class ResearchQAEngine:
             return "未检索到相关研报内容。"
         context = "\n\n".join(f"来源：{item.paper_path}\n内容：{item.text}" for item in items[:3])
         if self.llm_client:
-            prompt = f"请基于以下研报摘录回答问题，回答简洁，并优先引用明确事实。\n问题：{question}\n\n研报摘录：\n{context}"
+            prompt = (
+                "请基于以下研报摘录回答问题。要求：\n"
+                "1. 回答简洁，优先引用明确事实\n"
+                "2. 使用正式书面语，不要使用对话式口吻\n"
+                "3. 不要反问用户，不要说\u201c如果你需要\u201d、\u201c我可以帮你\u201d等表述\n"
+                "4. 直接给出结论性回答\n\n"
+                f"问题：{question}\n\n研报摘录：\n{context}"
+            )
             try:
                 return str(self.llm_client.complete(prompt)).strip()
             except Exception:

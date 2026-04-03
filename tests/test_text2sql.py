@@ -19,6 +19,28 @@ def make_db(tmp_path: Path) -> str:
     return str(db_path)
 
 
+def make_multi_year_db(tmp_path: Path) -> str:
+    """DB with 3 years of data for 华润三九 + multiple companies for top N."""
+    db_path = tmp_path / "finance_multi.db"
+    conn = sqlite3.connect(db_path)
+    conn.executescript(CREATE_TABLE_SQL)
+    rows = [
+        (1, '000999', '华润三九', '2022FY', 2022, 500000000, 300000000, 2000000000),
+        (2, '000999', '华润三九', '2023FY', 2023, 600000000, 350000000, 2200000000),
+        (3, '000999', '华润三九', '2024FY', 2024, 700000000, 400000000, 2500000000),
+        (4, '600080', '金花股份', '2024FY', 2024, 80000000, 40000000, 500000000),
+        (5, '600085', '同仁堂', '2024FY', 2024, 900000000, 500000000, 3000000000),
+        (6, '600557', '康缘药业', '2024FY', 2024, 200000000, 100000000, 800000000),
+    ]
+    conn.executemany(
+        "INSERT INTO income_sheet (serial_number, stock_code, stock_abbr, report_period, report_year, total_profit, net_profit, total_operating_revenue) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        rows,
+    )
+    conn.commit()
+    conn.close()
+    return str(db_path)
+
+
 def test_text2sql_clarify_when_period_missing(tmp_path: Path):
     engine = Text2SQLEngine(make_db(tmp_path))
     result = engine.query("金花股份利润总额是多少")
@@ -336,3 +358,38 @@ def test_llm_client_complete_wraps_prompt_messages():
     assert result == "ok"
     assert captured["messages"] == [{"role": "user", "content": "hello"}]
     assert captured["temperature"] == 0.2
+
+
+def test_recent_n_years_resolves_from_db_max_year(tmp_path: Path):
+    """'近三年' should resolve to 2022FY/2023FY/2024FY based on DB max year (2024)."""
+    engine = Text2SQLEngine(make_multi_year_db(tmp_path))
+    intent = engine.analyze("华润三九近三年净利润趋势")
+    assert intent["periods"] == ["2022FY", "2023FY", "2024FY"]
+    assert intent["is_trend"] is True
+    assert "华润三九" in intent["companies"]
+    # Should generate valid SQL with IN clause
+    sql = engine.generate_sql("华润三九近三年净利润趋势", intent)
+    assert "IN" in sql
+    assert "'2022FY'" in sql
+    assert "'2024FY'" in sql
+
+
+def test_top_n_generates_order_by_limit_sql(tmp_path: Path):
+    """Top N query should generate ORDER BY + LIMIT without company filter."""
+    engine = Text2SQLEngine(make_multi_year_db(tmp_path))
+    intent = engine.analyze("2024年利润总额最高的top3企业")
+    assert intent["top_n"] == 3
+    assert intent["order_direction"] == "DESC"
+    assert intent["companies"] == []
+    sql = engine.generate_sql("2024年利润总额最高的top3企业", intent)
+    assert "ORDER BY" in sql
+    assert "LIMIT 3" in sql
+    assert "stock_abbr" in sql
+    # Execute and verify results
+    result = engine.query("2024年利润总额最高的top3企业")
+    assert result.error is None
+    assert len(result.rows) == 3
+    # Should be sorted descending by total_profit
+    assert result.rows[0]["stock_abbr"] == "同仁堂"
+    assert result.rows[1]["stock_abbr"] == "华润三九"
+    assert result.rows[2]["stock_abbr"] == "康缘药业"

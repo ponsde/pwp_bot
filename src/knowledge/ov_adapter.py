@@ -102,12 +102,20 @@ def _extract_snippet(text: str, query: str, min_len: int = 200, max_len: int = 5
     snippet = normalized[start:end]
 
     if start > 0:
-        left_boundary = max(snippet.find(sep) for sep in ("。", "；", "\n") if snippet.find(sep) >= 0)
+        left_boundary = max((snippet.find(sep) for sep in ("。", "；", "\n") if snippet.find(sep) >= 0), default=-1)
         if left_boundary > 0:
             snippet = snippet[left_boundary + 1 :]
     if len(snippet) < min_len and end < len(normalized):
         snippet = normalized[start : min(len(normalized), start + min_len)]
     return snippet.strip()[:max_len]
+
+
+def _chinese_char_ratio(text: str) -> float:
+    """Return the ratio of Chinese characters in *text* (0.0–1.0)."""
+    if not text:
+        return 0.0
+    chinese_count = sum(1 for ch in text if "\u4e00" <= ch <= "\u9fff")
+    return chinese_count / len(text)
 
 
 def search(client: Any, query: str, top_k: int = 5) -> list[dict[str, Any]]:
@@ -118,9 +126,14 @@ def search(client: Any, query: str, top_k: int = 5) -> list[dict[str, Any]]:
     except Exception as exc:
         raise OpenVikingAdapterError(f"OpenViking search failed: {exc}") from exc
     items = _extract_matched_contexts(raw)
-    results: list[dict[str, Any]] = []
+    candidates: list[dict[str, Any]] = []
     for item in items[:top_k]:
         normalized = _normalize_item(item)
         normalized["text"] = _extract_snippet(normalized.get("text", ""), query)
-        results.append(normalized)
+        candidates.append(normalized)
+    # Filter out predominantly non-Chinese results, but keep at least 1.
+    results: list[dict[str, Any]] = [c for c in candidates if _chinese_char_ratio(c.get("text", "")) >= 0.3]
+    if not results and candidates:
+        best = max(candidates, key=lambda c: c.get("score", 0.0))
+        results = [best]
     return results

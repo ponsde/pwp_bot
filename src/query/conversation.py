@@ -42,7 +42,7 @@ class ConversationManager:
 
     def missing_slots(self, intent: dict) -> list[str]:
         missing: list[str] = []
-        if not intent.get("companies"):
+        if not intent.get("companies") and not intent.get("top_n"):
             missing.append("公司名称")
         if not intent.get("fields"):
             missing.append("指标名称")

@@ -65,12 +65,39 @@ class Text2SQLEngine:
             )
             raw = self.llm_client.complete(prompt, json_mode=True)
             intent = self._ensure_json_dict(raw)
+            intent = self._fix_recent_n_years_periods(question, intent)
+            intent = self._fix_top_n_intent(question, intent)
         else:
             intent = self._heuristic_intent(question)
         if conversation:
             intent = conversation.merge_intent(intent)
         self._validate_intent(intent)
         return intent
+
+    def _fix_recent_n_years_periods(self, question: str, intent: dict[str, Any]) -> dict[str, Any]:
+        """Post-LLM correction: if question says '近N年', fix periods from DB."""
+        recent_n, recent_periods = self._parse_recent_n_years(question)
+        if not recent_n or not recent_periods:
+            return intent
+        current_periods = intent.get("periods") or []
+        max_year = self._get_max_report_year()
+        needs_fix = (
+            not current_periods
+            or any(int(p[:4]) > (max_year or 9999) for p in current_periods if re.match(r"\d{4}", p))
+        )
+        if needs_fix:
+            updated = {**intent, "periods": recent_periods, "is_trend": True}
+            return updated
+        return intent
+
+    def _fix_top_n_intent(self, question: str, intent: dict[str, Any]) -> dict[str, Any]:
+        """Post-LLM correction: inject top_n/order_direction from question text."""
+        if intent.get("top_n"):
+            return intent
+        top_n, order_direction = self._parse_top_n(question)
+        if not top_n:
+            return intent
+        return {**intent, "top_n": top_n, "order_direction": order_direction, "companies": []}
 
     def generate_sql(self, question: str, intent: dict[str, Any]) -> str:
         if self.llm_client:
@@ -265,9 +292,74 @@ class Text2SQLEngine:
         for key in ["tables", "fields", "companies", "periods"]:
             intent.setdefault(key, [])
         intent.setdefault("is_trend", False)
+        intent.setdefault("top_n", None)
+        intent.setdefault("order_direction", None)
         for period in intent["periods"]:
             if not re.fullmatch(r"\d{4}(FY|Q1|HY|Q3)", period):
                 raise UserFacingError(f"报告期格式不正确：{period}")
+
+    _CN_DIGIT_MAP: dict[str, int] = {
+        "一": 1, "二": 2, "三": 3, "四": 4, "五": 5,
+        "六": 6, "七": 7, "八": 8, "九": 9, "十": 10,
+    }
+
+    def _get_max_report_year(self) -> int | None:
+        """Return the max year that has FY (annual) data, not just quarterly."""
+        conn = sqlite3.connect(self.db_path)
+        try:
+            row = conn.execute(
+                "SELECT MAX(report_year) FROM ("
+                "SELECT report_year FROM core_performance_indicators_sheet WHERE report_period LIKE '%FY' "
+                "UNION ALL SELECT report_year FROM balance_sheet WHERE report_period LIKE '%FY' "
+                "UNION ALL SELECT report_year FROM income_sheet WHERE report_period LIKE '%FY' "
+                "UNION ALL SELECT report_year FROM cash_flow_sheet WHERE report_period LIKE '%FY'"
+                ")"
+            ).fetchone()
+            if row and row[0] is not None:
+                return int(row[0])
+            # Fallback: any report_year if no FY data exists
+            row = conn.execute(
+                "SELECT MAX(report_year) FROM ("
+                "SELECT report_year FROM core_performance_indicators_sheet "
+                "UNION ALL SELECT report_year FROM balance_sheet "
+                "UNION ALL SELECT report_year FROM income_sheet "
+                "UNION ALL SELECT report_year FROM cash_flow_sheet"
+                ")"
+            ).fetchone()
+            return int(row[0]) if row and row[0] is not None else None
+        finally:
+            conn.close()
+
+    def _parse_recent_n_years(self, text: str) -> tuple[int | None, list[str]]:
+        """Parse '近N年' and return (N, periods list) or (None, [])."""
+        match = re.search(r"近(\d+|[一二三四五六七八九十]+)年", text)
+        if not match:
+            return None, []
+        raw = match.group(1)
+        n = self._CN_DIGIT_MAP.get(raw) if raw in self._CN_DIGIT_MAP else int(raw) if raw.isdigit() else None
+        if not n:
+            return None, []
+        max_year = self._get_max_report_year()
+        if not max_year:
+            return n, []
+        periods = [f"{max_year - i}FY" for i in range(n - 1, -1, -1)]
+        return n, periods
+
+    def _parse_top_n(self, text: str) -> tuple[int | None, str | None]:
+        """Parse Top N / 排名前N / 最高的N家 / 最低的N家 intent."""
+        patterns = [
+            (r"[Tt][Oo][Pp]\s*(\d+)", "DESC"),
+            (r"排名前\s*(\d+)", "DESC"),
+            (r"最高的?\s*(\d+)\s*家", "DESC"),
+            (r"最低的?\s*(\d+)\s*家", "ASC"),
+            (r"最少的?\s*(\d+)\s*家", "ASC"),
+            (r"最多的?\s*(\d+)\s*家", "DESC"),
+        ]
+        for pattern, direction in patterns:
+            m = re.search(pattern, text)
+            if m:
+                return int(m.group(1)), direction
+        return None, None
 
     def _heuristic_intent(self, question: str) -> dict[str, Any]:
         text = question.strip()
@@ -285,11 +377,19 @@ class Text2SQLEngine:
                     periods = [f"{year}Q1"]
                 else:
                     periods = [f"{year}FY"]
+        # Handle "近N年" relative time expressions
+        recent_n, recent_periods = self._parse_recent_n_years(text)
+        is_trend = any(token in text for token in ["变化趋势", "趋势", "走势", "近几年", "历年"])
+        if recent_n and recent_periods:
+            periods = recent_periods
+            is_trend = True
         field_map = {
             "利润总额": ("income_sheet", "total_profit"),
             "净利润": ("income_sheet", "net_profit"),
             "营业收入": ("income_sheet", "total_operating_revenue"),
             "营业总收入": ("income_sheet", "total_operating_revenue"),
+            "主营业务收入": ("income_sheet", "total_operating_revenue"),
+            "销售额": ("income_sheet", "total_operating_revenue"),
             "总资产": ("balance_sheet", "asset_total_assets"),
             "总负债": ("balance_sheet", "liability_total_liabilities"),
             "负债": ("balance_sheet", "liability_total_liabilities"),
@@ -297,6 +397,7 @@ class Text2SQLEngine:
             "经营现金流": ("cash_flow_sheet", "operating_cf_net_amount"),
             "每股收益": ("core_performance_indicators_sheet", "eps"),
             "净资产收益率": ("core_performance_indicators_sheet", "roe"),
+            "利润": ("income_sheet", "total_profit"),
         }
         tables, fields = [], []
         for cn, (table, field) in field_map.items():
@@ -306,13 +407,18 @@ class Text2SQLEngine:
         if not fields and any(token in text for token in ["变化趋势", "趋势", "走势"]):
             tables.append("income_sheet")
             fields.append("total_profit")
-        is_trend = any(token in text for token in ["变化趋势", "趋势", "走势", "近几年", "历年"])
+        # Handle Top N intent
+        top_n, order_direction = self._parse_top_n(text)
+        if top_n:
+            companies = []  # cross-company aggregation
         return {
             "tables": list(dict.fromkeys(tables)),
             "fields": list(dict.fromkeys(fields)),
             "companies": companies,
             "periods": periods,
             "is_trend": is_trend,
+            "top_n": top_n,
+            "order_direction": order_direction,
         }
 
     def _heuristic_sql(self, question: str, intent: dict[str, Any]) -> str:
@@ -320,7 +426,14 @@ class Text2SQLEngine:
             raise UserFacingError("未识别到可查询的数据表。")
         table = intent["tables"][0]
         fields = intent["fields"] or ["*"]
-        if intent.get("is_trend") or any(token in question for token in ["趋势", "变化", "历年", "走势", "近几年", "近几年的"]):
+        top_n = intent.get("top_n")
+        is_trend = intent.get("is_trend") or any(
+            token in question for token in ["趋势", "变化", "历年", "走势", "近几年", "近几年的"]
+        )
+        # Top N cross-company ranking query
+        if top_n and fields and fields != ["*"]:
+            return self._build_top_n_sql(table, fields, intent, top_n)
+        if is_trend:
             select_fields = ["report_period", *fields]
         else:
             select_fields = fields
@@ -328,12 +441,35 @@ class Text2SQLEngine:
         if intent["companies"]:
             where.append(f"stock_abbr = '{intent['companies'][0]}'")
         if intent["periods"]:
-            where.append(f"report_period = '{intent['periods'][0]}'")
+            periods_in = ", ".join(f"'{p}'" for p in intent["periods"])
+            if len(intent["periods"]) == 1:
+                where.append(f"report_period = '{intent['periods'][0]}'")
+            else:
+                where.append(f"report_period IN ({periods_in})")
         sql = f"SELECT {', '.join(dict.fromkeys(select_fields))} FROM {table}"
         if where:
             sql += " WHERE " + " AND ".join(where)
-        if intent.get("is_trend") or any(token in question for token in ["趋势", "变化", "历年", "走势", "近几年", "近几年的"]):
+        if is_trend:
             sql += " ORDER BY report_year, report_period"
+        return sql
+
+    def _build_top_n_sql(
+        self, table: str, fields: list[str], intent: dict[str, Any], top_n: int,
+    ) -> str:
+        direction = intent.get("order_direction") or "DESC"
+        order_field = fields[0]
+        select_fields = ["stock_abbr", *fields]
+        where = []
+        if intent["periods"]:
+            periods_in = ", ".join(f"'{p}'" for p in intent["periods"])
+            if len(intent["periods"]) == 1:
+                where.append(f"report_period = '{intent['periods'][0]}'")
+            else:
+                where.append(f"report_period IN ({periods_in})")
+        sql = f"SELECT {', '.join(dict.fromkeys(select_fields))} FROM {table}"
+        if where:
+            sql += " WHERE " + " AND ".join(where)
+        sql += f" ORDER BY {order_field} {direction} LIMIT {top_n}"
         return sql
 
     def _repair_sql(self, sql: str, error: str) -> str:

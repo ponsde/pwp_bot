@@ -34,4 +34,4 @@ ov.conf
 # Local-only: Claude instructions, OpenSpec artifacts, AI context
 CLAUDE.md
 PLAN.md
-openspec/
+.openspec

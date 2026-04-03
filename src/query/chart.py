@@ -37,6 +37,16 @@ def select_chart_type(question: str, rows: Sequence[dict]) -> str:
     return "none"
 
 
+def _detect_unit_scale(values: Sequence[float]) -> tuple[float, str]:
+    """Detect appropriate unit scale based on max absolute value."""
+    max_abs = max((abs(v) for v in values), default=0)
+    if max_abs >= 1e8:
+        return 1e8, "亿元"
+    if max_abs >= 1e4:
+        return 1e4, "万元"
+    return 1.0, ""
+
+
 def render_chart(
     chart_type: str,
     rows: Sequence[dict],
@@ -50,22 +60,27 @@ def render_chart(
     path.parent.mkdir(parents=True, exist_ok=True)
 
     labels = [str(row.get("label", idx)) for idx, row in enumerate(rows, start=1)]
-    values = [float(row.get("value", 0) or 0) for row in rows]
+    raw_values = [float(row.get("value", 0) or 0) for row in rows]
+
+    divisor, unit_label = _detect_unit_scale(raw_values)
+    values = [v / divisor for v in raw_values]
 
     fig, ax = plt.subplots(figsize=(8, 5))
     if chart_type == "line":
         ax.plot(labels, values, marker="o", linewidth=2)
         for i, v in enumerate(values):
-            ax.annotate(f"{v:,.0f}", (labels[i], v), textcoords="offset points", xytext=(0, 8), ha="center", fontsize=8)
+            ax.annotate(f"{v:,.2f}", (labels[i], v), textcoords="offset points", xytext=(0, 8), ha="center", fontsize=8)
     elif chart_type == "pie":
-        ax.pie(values, labels=labels, autopct="%1.1f%%", startangle=90)
+        ax.pie(raw_values, labels=labels, autopct="%1.1f%%", startangle=90)
     else:
         bars = ax.bar(labels, values, color="#4C8BF5")
         for bar, v in zip(bars, values):
-            ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height(), f"{v:,.0f}", ha="center", va="bottom", fontsize=8)
+            ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height(), f"{v:,.2f}", ha="center", va="bottom", fontsize=8)
     ax.set_title(title, fontsize=12)
     if chart_type != "pie":
         ax.tick_params(axis="x", rotation=30)
+        if unit_label:
+            ax.set_ylabel(unit_label)
     fig.tight_layout()
     fig.savefig(path, format="jpg", dpi=150)
     plt.close(fig)
