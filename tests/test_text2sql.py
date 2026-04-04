@@ -4,7 +4,7 @@ from pathlib import Path
 from src.llm.client import LLMClient
 from src.prompts.loader import load_prompt
 from src.query.conversation import ConversationManager
-from src.query.text2sql import CREATE_TABLE_SQL, MAX_PROMPT_ROWS, Text2SQLEngine
+from src.query.text2sql import CREATE_TABLE_SQL, MAX_PROMPT_ROWS, Text2SQLEngine, UserFacingError
 
 
 def make_db(tmp_path: Path) -> str:
@@ -28,9 +28,12 @@ def make_multi_year_db(tmp_path: Path) -> str:
         (1, '000999', '华润三九', '2022FY', 2022, 500000000, 300000000, 2000000000),
         (2, '000999', '华润三九', '2023FY', 2023, 600000000, 350000000, 2200000000),
         (3, '000999', '华润三九', '2024FY', 2024, 700000000, 400000000, 2500000000),
-        (4, '600080', '金花股份', '2024FY', 2024, 80000000, 40000000, 500000000),
-        (5, '600085', '同仁堂', '2024FY', 2024, 900000000, 500000000, 3000000000),
-        (6, '600557', '康缘药业', '2024FY', 2024, 200000000, 100000000, 800000000),
+        (4, '600080', '金花股份', '2023FY', 2023, 60000000, 30000000, 420000000),
+        (5, '600080', '金花股份', '2024FY', 2024, 80000000, 40000000, 500000000),
+        (6, '600085', '同仁堂', '2023FY', 2023, 700000000, 400000000, 2800000000),
+        (7, '600085', '同仁堂', '2024FY', 2024, 900000000, 500000000, 3000000000),
+        (8, '600557', '康缘药业', '2023FY', 2023, 150000000, 80000000, 700000000),
+        (9, '600557', '康缘药业', '2024FY', 2024, 200000000, 100000000, 800000000),
     ]
     conn.executemany(
         "INSERT INTO income_sheet (serial_number, stock_code, stock_abbr, report_period, report_year, total_profit, net_profit, total_operating_revenue) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
@@ -385,11 +388,108 @@ def test_top_n_generates_order_by_limit_sql(tmp_path: Path):
     assert "ORDER BY" in sql
     assert "LIMIT 3" in sql
     assert "stock_abbr" in sql
-    # Execute and verify results
     result = engine.query("2024年利润总额最高的top3企业")
     assert result.error is None
     assert len(result.rows) == 3
-    # Should be sorted descending by total_profit
     assert result.rows[0]["stock_abbr"] == "同仁堂"
     assert result.rows[1]["stock_abbr"] == "华润三九"
     assert result.rows[2]["stock_abbr"] == "康缘药业"
+
+
+def test_yoy_intent_and_sql_generation(tmp_path: Path):
+    engine = Text2SQLEngine(make_multi_year_db(tmp_path))
+    intent = engine.analyze("华润三九2024年净利润同比")
+    assert intent["yoy"] is True
+    assert intent["fields"] == ["net_profit"]
+    assert intent["periods"] == ["2024FY"]
+    sql = engine.generate_sql("华润三九2024年净利润同比", intent)
+    assert "JOIN income_sheet b ON a.stock_abbr = b.stock_abbr" in sql
+    assert "b.report_period = '2023FY'" in sql
+    assert "CASE WHEN b.net_profit = 0 THEN NULL ELSE ROUND((a.net_profit - b.net_profit) * 1.0 / b.net_profit, 4) END AS yoy_ratio" in sql
+    result = engine.query("华润三九2024年净利润同比")
+    assert result.error is None
+    assert result.rows[0]["stock_abbr"] == "华润三九"
+    assert result.rows[0]["current_value"] == 400000000
+    assert result.rows[0]["previous_value"] == 350000000
+    assert result.rows[0]["yoy_ratio"] == 0.1429
+
+
+def test_list_companies_handles_missing_tables(tmp_path: Path):
+    db_path = tmp_path / "partial.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute("CREATE TABLE income_sheet (stock_abbr TEXT)")
+    conn.execute("INSERT INTO income_sheet (stock_abbr) VALUES ('华润三九')")
+    conn.commit()
+    conn.close()
+
+    engine = Text2SQLEngine(str(db_path))
+    assert engine.list_companies() == []
+
+
+def test_yoy_zero_previous_value_returns_warning(tmp_path: Path):
+    db_path = tmp_path / "finance_yoy_zero.db"
+    conn = sqlite3.connect(db_path)
+    conn.executescript(CREATE_TABLE_SQL)
+    conn.executemany(
+        "INSERT INTO income_sheet (serial_number, stock_code, stock_abbr, report_period, report_year, total_profit, net_profit, total_operating_revenue) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+            (1, '000999', '华润三九', '2023FY', 2023, 600000000, 0, 2200000000),
+            (2, '000999', '华润三九', '2024FY', 2024, 700000000, 400000000, 2500000000),
+        ],
+    )
+    conn.commit()
+    conn.close()
+
+    engine = Text2SQLEngine(str(db_path))
+    result = engine.query("华润三九2024年净利润同比")
+    assert result.error is None
+    assert result.warning == "上年同期值为零，无法计算同比增长率"
+    assert result.rows[0]["yoy_ratio"] is None
+
+
+def test_yoy_top_n_supports_multiple_companies(tmp_path: Path):
+    engine = Text2SQLEngine(make_multi_year_db(tmp_path))
+    intent = engine.analyze("2024年净利润同比增长最高的top2企业")
+    assert intent["yoy"] is True
+    assert intent["top_n"] == 2
+    sql = engine.generate_sql("2024年净利润同比增长最高的top2企业", intent)
+    assert "ORDER BY yoy_ratio DESC LIMIT 2" in sql
+    result = engine.query("2024年净利润同比增长最高的top2企业")
+    assert result.error is None
+    assert len(result.rows) == 2
+    assert result.rows[0]["stock_abbr"] == "金花股份"
+    assert result.rows[0]["yoy_ratio"] == 0.3333
+
+
+def test_yoy_without_period_triggers_clarification(tmp_path: Path):
+    engine = Text2SQLEngine(make_multi_year_db(tmp_path))
+    result = engine.query("华润三九营业收入同比是多少")
+    assert result.needs_clarification is True
+    assert "报告期" in (result.clarification_question or "")
+
+
+def test_build_yoy_sql_raises_user_facing_error_for_empty_fields(tmp_path: Path):
+    engine = Text2SQLEngine(make_multi_year_db(tmp_path))
+    try:
+        engine._build_yoy_sql("income_sheet", [], {"periods": ["2024FY"]})
+    except UserFacingError as exc:
+        assert "指标字段" in str(exc)
+    else:
+        raise AssertionError("expected UserFacingError for empty fields")
+
+
+def test_yoy_fallback_when_previous_period_missing(tmp_path: Path):
+    db_path = tmp_path / "finance_yoy_fallback.db"
+    conn = sqlite3.connect(db_path)
+    conn.executescript(CREATE_TABLE_SQL)
+    conn.execute(
+        "INSERT INTO income_sheet (serial_number, stock_code, stock_abbr, report_period, report_year, total_profit, net_profit, total_operating_revenue) VALUES (1, '000999', '华润三九', '2024FY', 2024, 700000000, 400000000, 2500000000)"
+    )
+    conn.commit()
+    conn.close()
+    engine = Text2SQLEngine(str(db_path))
+    result = engine.query("华润三九2024年净利润同比")
+    assert result.error is None
+    assert result.warning == "上年同期数据不存在，无法计算同比"
+    assert result.rows[0]["stock_abbr"] == "华润三九"
+    assert result.rows[0]["net_profit"] == 400000000

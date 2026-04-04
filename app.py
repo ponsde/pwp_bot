@@ -16,23 +16,9 @@ conversation = ConversationManager()
 
 
 def _safe_chart_data(rows: list[dict]) -> list[dict]:
-    """Build chart-friendly data from query rows, handling non-numeric first columns."""
-    data = []
-    for row in rows:
-        items = list(row.items())
-        if len(items) >= 2:
-            label = str(items[0][1])
-            value = items[1][1]
-        elif len(items) == 1:
-            label = str(len(data) + 1)
-            value = items[0][1]
-        else:
-            continue
-        try:
-            data.append({"label": label, "value": float(value)})
-        except (ValueError, TypeError):
-            continue
-    return data
+    """Build chart-friendly data — delegates to shared chart utility."""
+    from src.query.chart import safe_chart_data
+    return safe_chart_data(rows)
 
 
 def chat(question: str):
@@ -47,7 +33,7 @@ def chat(question: str):
         sql_text = result.sql or ""
         image = None
     else:
-        content = build_answer_content(question, result.rows)
+        content = build_answer_content(question, result.rows, intent=result.intent)
         sql_text = result.sql or ""
         chart_data = _safe_chart_data(result.rows)
         chart_type = select_chart_type(question, chart_data)

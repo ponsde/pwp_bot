@@ -32,6 +32,7 @@ FIELD_CATALOG = {
 SAFE_SELECT_RE = re.compile(r"^\s*select\s+", re.I)
 FORBIDDEN_SQL_RE = re.compile(r"\b(insert|update|delete|drop|attach|pragma|alter|create|replace)\b", re.I)
 MAX_PROMPT_ROWS = 50
+YOY_KEYWORDS = ("同比", "同比增长", "同比下降", "增长率", "增减")
 
 
 class UserFacingError(Exception):
@@ -67,6 +68,7 @@ class Text2SQLEngine:
             intent = self._ensure_json_dict(raw)
             intent = self._fix_recent_n_years_periods(question, intent)
             intent = self._fix_top_n_intent(question, intent)
+            intent = self._fix_yoy_intent(question, intent)
         else:
             intent = self._heuristic_intent(question)
         if conversation:
@@ -98,6 +100,13 @@ class Text2SQLEngine:
         if not top_n:
             return intent
         return {**intent, "top_n": top_n, "order_direction": order_direction, "companies": []}
+
+    def _fix_yoy_intent(self, question: str, intent: dict[str, Any]) -> dict[str, Any]:
+        if intent.get("yoy"):
+            return intent
+        if self._contains_yoy_keyword(question):
+            return {**intent, "yoy": True}
+        return intent
 
     def generate_sql(self, question: str, intent: dict[str, Any]) -> str:
         if self.llm_client:
@@ -140,6 +149,8 @@ class Text2SQLEngine:
         try:
             sql, rows, final_intent, warning = self._query_with_recovery(question, intent, manager)
             if not rows:
+                if warning:
+                    return QueryResult(sql=sql, rows=[], intent=final_intent, error=warning, warning=warning)
                 return QueryResult(sql=sql, rows=[], intent=final_intent, error="未查询到符合条件的数据。")
             return QueryResult(sql=sql, rows=rows, intent=final_intent, warning=warning)
         except UserFacingError as exc:
@@ -148,14 +159,17 @@ class Text2SQLEngine:
     def list_companies(self) -> list[str]:
         conn = sqlite3.connect(self.db_path)
         try:
-            rows = conn.execute(
-                "SELECT DISTINCT stock_abbr FROM ("
-                "SELECT stock_abbr FROM core_performance_indicators_sheet "
-                "UNION ALL SELECT stock_abbr FROM balance_sheet "
-                "UNION ALL SELECT stock_abbr FROM income_sheet "
-                "UNION ALL SELECT stock_abbr FROM cash_flow_sheet"
-                ") WHERE stock_abbr IS NOT NULL AND stock_abbr <> '' ORDER BY stock_abbr"
-            ).fetchall()
+            try:
+                rows = conn.execute(
+                    "SELECT DISTINCT stock_abbr FROM ("
+                    "SELECT stock_abbr FROM core_performance_indicators_sheet "
+                    "UNION ALL SELECT stock_abbr FROM balance_sheet "
+                    "UNION ALL SELECT stock_abbr FROM income_sheet "
+                    "UNION ALL SELECT stock_abbr FROM cash_flow_sheet"
+                    ") WHERE stock_abbr IS NOT NULL AND stock_abbr <> '' ORDER BY stock_abbr"
+                ).fetchall()
+            except sqlite3.OperationalError:
+                return []
             return [row[0] for row in rows]
         finally:
             conn.close()
@@ -170,6 +184,20 @@ class Text2SQLEngine:
         warning: str | None = None
         current_sql = self.generate_sql(question, current_intent)
         current_rows = self._execute_with_retry(current_sql, question, current_intent)
+
+        if current_intent.get("yoy") and not current_rows:
+            fallback_sql = self._build_single_period_sql(
+                current_intent["tables"][0],
+                current_intent.get("fields") or ["*"],
+                current_intent,
+                include_company=True,
+            )
+            fallback_rows = self._execute_with_retry(fallback_sql, question, current_intent)
+            if fallback_rows:
+                return fallback_sql, fallback_rows, current_intent, "上年同期数据不存在，无法计算同比"
+
+        if current_intent.get("yoy") and any(row.get("yoy_ratio") is None for row in current_rows):
+            warning = "上年同期值为零，无法计算同比增长率"
 
         validation = self._validate_result(question, current_intent, current_sql, current_rows)
         if not validation["accepted"]:
@@ -245,6 +273,11 @@ class Text2SQLEngine:
         if intent.get("fields"):
             expected = set(intent["fields"])
             present = set(rows[0].keys())
+            if intent.get("yoy"):
+                if {"current_value", "previous_value", "yoy_ratio"}.issubset(present):
+                    expected = set()
+                else:
+                    present |= {"current_value", "previous_value", "yoy_ratio"}
             if not expected.issubset(present):
                 return {"accepted": False, "reason": "结果缺少预期指标字段。"}
         if intent.get("companies"):
@@ -294,6 +327,7 @@ class Text2SQLEngine:
         intent.setdefault("is_trend", False)
         intent.setdefault("top_n", None)
         intent.setdefault("order_direction", None)
+        intent.setdefault("yoy", False)
         for period in intent["periods"]:
             if not re.fullmatch(r"\d{4}(FY|Q1|HY|Q3)", period):
                 raise UserFacingError(f"报告期格式不正确：{period}")
@@ -317,7 +351,6 @@ class Text2SQLEngine:
             ).fetchone()
             if row and row[0] is not None:
                 return int(row[0])
-            # Fallback: any report_year if no FY data exists
             row = conn.execute(
                 "SELECT MAX(report_year) FROM ("
                 "SELECT report_year FROM core_performance_indicators_sheet "
@@ -331,7 +364,6 @@ class Text2SQLEngine:
             conn.close()
 
     def _parse_recent_n_years(self, text: str) -> tuple[int | None, list[str]]:
-        """Parse '近N年' and return (N, periods list) or (None, [])."""
         match = re.search(r"近(\d+|[一二三四五六七八九十]+)年", text)
         if not match:
             return None, []
@@ -346,7 +378,6 @@ class Text2SQLEngine:
         return n, periods
 
     def _parse_top_n(self, text: str) -> tuple[int | None, str | None]:
-        """Parse Top N / 排名前N / 最高的N家 / 最低的N家 intent."""
         patterns = [
             (r"[Tt][Oo][Pp]\s*(\d+)", "DESC"),
             (r"排名前\s*(\d+)", "DESC"),
@@ -360,6 +391,13 @@ class Text2SQLEngine:
             if m:
                 return int(m.group(1)), direction
         return None, None
+
+    def _contains_yoy_keyword(self, text: str) -> bool:
+        if "环比" in text:
+            return False
+        if any(keyword in text for keyword in YOY_KEYWORDS):
+            return True
+        return False
 
     def _heuristic_intent(self, question: str) -> dict[str, Any]:
         text = question.strip()
@@ -377,7 +415,6 @@ class Text2SQLEngine:
                     periods = [f"{year}Q1"]
                 else:
                     periods = [f"{year}FY"]
-        # Handle "近N年" relative time expressions
         recent_n, recent_periods = self._parse_recent_n_years(text)
         is_trend = any(token in text for token in ["变化趋势", "趋势", "走势", "近几年", "历年"])
         if recent_n and recent_periods:
@@ -400,17 +437,19 @@ class Text2SQLEngine:
             "利润": ("income_sheet", "total_profit"),
         }
         tables, fields = [], []
+        matched_terms: set[str] = set()
         for cn, (table, field) in field_map.items():
-            if cn in text:
+            if cn in text and not any(cn in term and cn != term for term in matched_terms):
                 tables.append(table)
                 fields.append(field)
+                matched_terms.add(cn)
         if not fields and any(token in text for token in ["变化趋势", "趋势", "走势"]):
             tables.append("income_sheet")
             fields.append("total_profit")
-        # Handle Top N intent
         top_n, order_direction = self._parse_top_n(text)
         if top_n:
-            companies = []  # cross-company aggregation
+            companies = []
+        yoy = self._contains_yoy_keyword(text)
         return {
             "tables": list(dict.fromkeys(tables)),
             "fields": list(dict.fromkeys(fields)),
@@ -419,6 +458,7 @@ class Text2SQLEngine:
             "is_trend": is_trend,
             "top_n": top_n,
             "order_direction": order_direction,
+            "yoy": yoy,
         }
 
     def _heuristic_sql(self, question: str, intent: dict[str, Any]) -> str:
@@ -427,20 +467,38 @@ class Text2SQLEngine:
         table = intent["tables"][0]
         fields = intent["fields"] or ["*"]
         top_n = intent.get("top_n")
+        if intent.get("yoy"):
+            return self._build_yoy_sql(table, fields, intent)
         is_trend = intent.get("is_trend") or any(
             token in question for token in ["趋势", "变化", "历年", "走势", "近几年", "近几年的"]
         )
-        # Top N cross-company ranking query
         if top_n and fields and fields != ["*"]:
             return self._build_top_n_sql(table, fields, intent, top_n)
-        if is_trend:
+        return self._build_single_period_sql(table, fields, intent, include_company=bool(intent.get("companies")), is_trend=is_trend)
+
+    def _build_single_period_sql(
+        self,
+        table: str,
+        fields: list[str],
+        intent: dict[str, Any],
+        include_company: bool = False,
+        is_trend: bool | None = None,
+    ) -> str:
+        trend = intent.get("is_trend") if is_trend is None else is_trend
+        select_fields = list(fields)
+        if trend:
             select_fields = ["report_period", *fields]
-        else:
-            select_fields = fields
+        elif include_company and "stock_abbr" not in select_fields:
+            select_fields = ["stock_abbr", *select_fields]
         where = []
-        if intent["companies"]:
-            where.append(f"stock_abbr = '{intent['companies'][0]}'")
-        if intent["periods"]:
+        companies = intent.get("companies") or []
+        if companies:
+            if len(companies) == 1:
+                where.append(f"stock_abbr = '{companies[0]}'")
+            else:
+                companies_in = ", ".join(f"'{company}'" for company in companies)
+                where.append(f"stock_abbr IN ({companies_in})")
+        if intent.get("periods"):
             periods_in = ", ".join(f"'{p}'" for p in intent["periods"])
             if len(intent["periods"]) == 1:
                 where.append(f"report_period = '{intent['periods'][0]}'")
@@ -449,8 +507,47 @@ class Text2SQLEngine:
         sql = f"SELECT {', '.join(dict.fromkeys(select_fields))} FROM {table}"
         if where:
             sql += " WHERE " + " AND ".join(where)
-        if is_trend:
+        if trend:
             sql += " ORDER BY report_year, report_period"
+        return sql
+
+    def _build_yoy_sql(self, table: str, fields: list[str], intent: dict[str, Any]) -> str:
+        if not intent.get("periods"):
+            raise UserFacingError("同比查询缺少报告期。")
+        current_period = intent["periods"][0]
+        match = re.fullmatch(r"(\d{4})FY", current_period)
+        if not match:
+            raise UserFacingError("当前仅支持年度同比（FY 对 FY）。")
+        previous_period = f"{int(match.group(1)) - 1}FY"
+        if not fields:
+            raise UserFacingError("同比查询缺少指标字段，请明确说明要查询的财务指标。")
+        metric = fields[0]
+        select_fields = [
+            "a.stock_abbr",
+            "a.report_period",
+            f"a.{metric} AS current_value",
+            f"b.{metric} AS previous_value",
+            (
+                f"CASE WHEN b.{metric} = 0 THEN NULL "
+                f"ELSE ROUND((a.{metric} - b.{metric}) * 1.0 / b.{metric}, 4) END AS yoy_ratio"
+            ),
+        ]
+        where = [f"a.report_period = '{current_period}'", f"b.report_period = '{previous_period}'"]
+        companies = intent.get("companies") or []
+        if companies:
+            if len(companies) == 1:
+                where.append(f"a.stock_abbr = '{companies[0]}'")
+            else:
+                companies_in = ", ".join(f"'{company}'" for company in companies)
+                where.append(f"a.stock_abbr IN ({companies_in})")
+        sql = (
+            f"SELECT {', '.join(select_fields)} FROM {table} a "
+            f"JOIN {table} b ON a.stock_abbr = b.stock_abbr "
+            f"WHERE {' AND '.join(where)}"
+        )
+        if intent.get("top_n"):
+            direction = intent.get("order_direction") or "DESC"
+            sql += f" ORDER BY yoy_ratio {direction} LIMIT {int(intent['top_n'])}"
         return sql
 
     def _build_top_n_sql(

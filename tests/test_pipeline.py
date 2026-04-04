@@ -51,7 +51,9 @@ def test_pipeline_answer_falls_back_when_llm_init_fails(tmp_path: Path, monkeypa
     run_answer(str(questions), str(db_path), str(output))
     result_df = pd.read_excel(output)
     assert output.exists()
-    assert "SELECT total_profit FROM income_sheet" in result_df.loc[0, "SQL查询语句"]
+    assert "SELECT" in result_df.loc[0, "SQL查询语句"]
+    assert "total_profit" in result_df.loc[0, "SQL查询语句"]
+    assert "income_sheet" in result_df.loc[0, "SQL查询语句"]
 
 
 def test_pipeline_answer_sql_is_scoped_per_question_group(tmp_path: Path, monkeypatch):

@@ -23,6 +23,49 @@ for _font in _FONT_CANDIDATES:
         continue
 
 
+def pick_chart_columns(row: dict) -> tuple[str | None, object | None]:
+    """Intelligently select label and value columns from a result row for charting."""
+    preferred_label_fields = ["stock_abbr", "report_period"]
+    preferred_value_fields = ["yoy_ratio"]
+
+    label_field = next((field for field in preferred_label_fields if field in row and row.get(field) not in (None, "")), None)
+    if label_field is None:
+        for key, value in row.items():
+            if isinstance(value, str) and value != "":
+                label_field = key
+                break
+        if label_field is None and row:
+            label_field = next(iter(row.keys()))
+
+    value_field = next((field for field in preferred_value_fields if isinstance(row.get(field), (int, float))), None)
+    if value_field is None:
+        numeric_keys = [key for key, value in row.items() if isinstance(value, (int, float)) and key != label_field]
+        if numeric_keys:
+            value_field = numeric_keys[-1]
+        elif label_field and isinstance(row.get(label_field), (int, float)):
+            value_field = label_field
+
+    label = str(row.get(label_field)) if label_field and row.get(label_field) not in (None, "") else None
+    value = row.get(value_field) if value_field else None
+    return label, value
+
+
+def safe_chart_data(rows: Sequence[dict]) -> list[dict]:
+    """Build chart-friendly data with smart label/value column selection."""
+    data = []
+    for row in rows:
+        label, value = pick_chart_columns(row)
+        if value is None:
+            continue
+        if label is None:
+            label = str(len(data) + 1)
+        try:
+            data.append({"label": label, "value": float(value)})
+        except (ValueError, TypeError):
+            continue
+    return data
+
+
 def select_chart_type(question: str, rows: Sequence[dict]) -> str:
     if len(rows) <= 1:
         return "none"

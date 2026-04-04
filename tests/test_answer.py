@@ -2,7 +2,9 @@ from pathlib import Path
 
 import pandas as pd
 
+from pipeline import _safe_chart_data as pipeline_safe_chart_data
 from src.query.answer import build_answer_content, build_answer_record, write_result_xlsx
+from src.query.chart import safe_chart_data
 
 
 def test_answer_format_and_xlsx(tmp_path: Path):
@@ -31,3 +33,61 @@ def test_build_answer_content_keeps_company_and_period_identifiers():
     assert "247.39亿元" in content
     # Field names should be Chinese labels, not raw DB column names
     assert "total_operating_revenue" not in content
+
+
+def test_build_answer_content_formats_yoy_growth_naturally():
+    rows = [{
+        "stock_abbr": "华润三九",
+        "report_period": "2024FY",
+        "current_value": 400000000,
+        "previous_value": 350000000,
+        "yoy_ratio": 0.1429,
+    }]
+    content = build_answer_content("华润三九2024年净利润同比是多少", rows, intent={"fields": ["net_profit"]})
+    assert "同比增长14.29%" in content
+    assert "净利润" in content
+    assert "本期40,000.00万元" in content
+    assert "上期35,000.00万元" in content
+
+
+def test_build_answer_content_formats_yoy_decline_and_none():
+    decline = build_answer_content(
+        "同比",
+        [{
+            "stock_abbr": "金花股份",
+            "report_period": "2024FY",
+            "current_value": 8500,
+            "previous_value": 10000,
+            "yoy_ratio": -0.15,
+        }],
+        intent={"fields": ["net_profit"]},
+    )
+    none_case = build_answer_content(
+        "同比",
+        [{
+            "stock_abbr": "金花股份",
+            "report_period": "2024FY",
+            "current_value": 4000,
+            "previous_value": 0,
+            "yoy_ratio": None,
+        }],
+        intent={"fields": ["net_profit"]},
+    )
+    assert "同比下降15.00%" in decline
+    assert "无法计算同比（上期值为零）" in none_case
+
+
+def test_safe_chart_data_picks_numeric_value_from_multi_column_rows():
+    rows = [
+        {
+            "stock_abbr": "金花股份",
+            "report_period": "2024FY",
+            "current_value": 400000000,
+            "previous_value": 350000000,
+            "yoy_ratio": 0.1429,
+        }
+    ]
+    chart_data = safe_chart_data(rows)
+    pipeline_chart = pipeline_safe_chart_data(rows)
+    assert chart_data == [{"label": "金花股份", "value": 0.1429}]
+    assert pipeline_chart == chart_data

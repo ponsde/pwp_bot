@@ -1,5 +1,6 @@
 from src.knowledge.research_qa import ResearchQAEngine
 from src.knowledge.retriever import RetrievalItem
+from src.query.conversation import ConversationManager
 from src.query.text2sql import QueryResult
 
 
@@ -44,3 +45,118 @@ def test_answer_hybrid_combines_sql_and_rag():
     assert answer.route == 'hybrid'
     assert '100.00万元' not in answer.answer
     assert answer.references
+
+
+def test_answer_sql_forwards_company_context_between_sub_questions():
+    class ForwardSQL:
+        def __init__(self):
+            self.calls = []
+
+        def query(self, question, conversation=None):
+            self.calls.append((question, list((conversation or ConversationManager()).slots.get('companies', []))))
+            if 'top10' in question or 'top 10' in question or '最高' in question:
+                return QueryResult(
+                    sql='SELECT stock_abbr, net_profit FROM income_sheet ORDER BY net_profit DESC LIMIT 10',
+                    rows=[{'stock_abbr': '华润三九', 'net_profit': 400000000}, {'stock_abbr': '同仁堂', 'net_profit': 500000000}],
+                    intent={},
+                )
+            return QueryResult(
+                sql='SELECT stock_abbr, yoy_ratio FROM income_sheet',
+                rows=[{'stock_abbr': '华润三九', 'yoy_ratio': 0.1429}, {'stock_abbr': '同仁堂', 'yoy_ratio': 0.2500}],
+                intent={'companies': []},
+            )
+
+    class ForwardEngine(FakeEngine):
+        def __init__(self):
+            super().__init__()
+            self.sql_engine = ForwardSQL()
+
+        def classify_intent(self, question: str) -> str:
+            return 'sql'
+
+        def split_multi_intent(self, question: str, conversation: ConversationManager | None = None) -> list[str]:
+            return ['2024年净利润最高的top10企业是哪些？', '这些企业的净利润同比是多少？']
+
+    engine = ForwardEngine()
+    conv = ConversationManager()
+    answer = engine.answer_question('2024年净利润最高的top10企业是哪些？这些企业的净利润同比是多少？', conv)
+    assert answer.route == 'sql'
+    assert engine.sql_engine.calls[0][1] == []
+    assert engine.sql_engine.calls[1][1] == ['华润三九', '同仁堂']
+    assert conv.slots['companies'] == ['华润三九', '同仁堂']
+
+
+def test_select_chart_type_auto_triggers_for_top_n_and_yoy():
+    engine = FakeEngine()
+    assert engine._select_chart_type('2024年利润最高的top10企业是哪些', [{'stock_abbr': 'A', 'net_profit': 1}, {'stock_abbr': 'B', 'net_profit': 2}]) == 'bar'
+    assert engine._select_chart_type('同比情况', [{'stock_abbr': 'A', 'yoy_ratio': 0.1}, {'stock_abbr': 'B', 'yoy_ratio': 0.2}]) == 'bar'
+    assert engine._select_chart_type('华润三九2024年净利润是多少', [{'stock_abbr': '华润三九', 'net_profit': 1}]) == '无'
+
+
+def test_superlative_subquestion_includes_company_and_metric_value():
+    class SummarySQL:
+        def query(self, question, conversation=None):
+            return QueryResult(
+                sql='SELECT stock_abbr, report_period, current_value, previous_value, yoy_ratio FROM income_sheet',
+                rows=[{'stock_abbr': '金花股份', 'report_period': '2024FY', 'current_value': 3716.0, 'previous_value': 1000.0, 'yoy_ratio': 2.716}],
+                intent={'fields': ['net_profit']},
+            )
+
+    class SummaryEngine(FakeEngine):
+        def __init__(self):
+            super().__init__()
+            self.sql_engine = SummarySQL()
+
+        def classify_intent(self, question: str) -> str:
+            return 'sql'
+
+        def split_multi_intent(self, question: str, conversation: ConversationManager | None = None) -> list[str]:
+            return ['年同比上涨幅度最大的是哪家企业？']
+
+    answer = SummaryEngine().answer_question('年同比上涨幅度最大的是哪家企业？')
+    assert '金花股份' in answer.answer
+    assert '271.60%' in answer.answer
+    assert '同比增长' in answer.answer
+
+
+def test_answer_sql_prefers_most_chartable_subquestion_result():
+    class ChartSQL:
+        def __init__(self):
+            self.calls = 0
+
+        def query(self, question, conversation=None):
+            self.calls += 1
+            if self.calls == 1:
+                return QueryResult(
+                    sql='SELECT report_period, total_profit FROM income_sheet',
+                    rows=[{'report_period': '2024FY', 'total_profit': 10.0}],
+                    intent={},
+                )
+            return QueryResult(
+                sql='SELECT stock_abbr, yoy_ratio FROM income_sheet',
+                rows=[
+                    {'stock_abbr': 'A', 'yoy_ratio': 0.1},
+                    {'stock_abbr': 'B', 'yoy_ratio': 0.2},
+                    {'stock_abbr': 'C', 'yoy_ratio': 0.3},
+                ],
+                intent={'fields': ['net_profit']},
+            )
+
+    class ChartEngine(FakeEngine):
+        def __init__(self):
+            super().__init__()
+            self.sql_engine = ChartSQL()
+
+        def classify_intent(self, question: str) -> str:
+            return 'sql'
+
+        def split_multi_intent(self, question: str, conversation: ConversationManager | None = None) -> list[str]:
+            return ['先问一个单行结果？', '再问同比排名结果？']
+
+    answer = ChartEngine().answer_question('复合问题')
+    assert answer.chart_rows == [
+        {'stock_abbr': 'A', 'yoy_ratio': 0.1},
+        {'stock_abbr': 'B', 'yoy_ratio': 0.2},
+        {'stock_abbr': 'C', 'yoy_ratio': 0.3},
+    ]
+    assert answer.chart_type == 'bar'

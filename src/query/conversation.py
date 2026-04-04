@@ -38,6 +38,7 @@ class ConversationManager:
             else:
                 merged[key] = list(self.slots.get(key, []))
         merged["is_trend"] = bool(intent.get("is_trend", False))
+        merged["yoy"] = bool(intent.get("yoy", False))
         return merged
 
     def missing_slots(self, intent: dict) -> list[str]:

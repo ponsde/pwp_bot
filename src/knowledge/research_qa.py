@@ -108,8 +108,9 @@ class ResearchQAEngine:
             if result.sql:
                 sql_parts.append(result.sql)
             answer_parts.append(self._format_sql_result(sub_question, result))
-            if result.rows and not chart_rows:
+            if self._is_better_chart_result(result.rows, chart_rows):
                 chart_rows = result.rows
+            self._forward_result_context(sub_question, result, manager)
         return ResearchAnswer(
             question=question,
             route="sql",
@@ -186,7 +187,21 @@ class ResearchQAEngine:
             return result.clarification_question or "请补充信息。"
         if result.error:
             return result.error
-        return build_answer_content(question, result.rows)
+        content = build_answer_content(question, result.rows, intent=result.intent)
+        if self._is_superlative_question(question) and len(result.rows) == 1:
+            return self._build_superlative_summary(question, result.rows[0], result.intent, content)
+        return content
+
+    def _forward_result_context(self, question: str, result: QueryResult, manager: ConversationManager) -> None:
+        if not result.rows:
+            return
+        companies = []
+        for row in result.rows:
+            company = row.get("stock_abbr")
+            if company:
+                companies.append(str(company))
+        if companies:
+            manager.slots["companies"] = list(dict.fromkeys(companies))
 
     def _heuristic_split_multi_intent(self, question: str) -> list[str]:
         normalized = question.strip()
@@ -255,10 +270,42 @@ class ResearchQAEngine:
         return f"{question}\n已查询数据问题：{data_question}"
 
     def _select_chart_type(self, question: str, rows: list[dict[str, Any]]) -> str:
-        if not any(token in question for token in ["可视化", "绘图", "图表", "画图"]):
-            return "无"
-        chart_type = select_chart_type(question, rows)
-        return "无" if chart_type == "none" else chart_type
+        if len(rows) > 1 and any("stock_abbr" in row for row in rows):
+            return "bar"
+        if len(rows) > 1 and any("yoy_ratio" in row for row in rows):
+            return "bar"
+        if any(token in question for token in ["趋势", "变化", "走势", "可视化", "绘图", "图表", "画图"]):
+            chart_type = select_chart_type(question, rows)
+            return "无" if chart_type == "none" else chart_type
+        return "无"
+
+    def _chart_row_score(self, rows: list[dict[str, Any]]) -> tuple[int, int, int]:
+        if not rows:
+            return (0, 0, 0)
+        has_priority_field = any(("stock_abbr" in row) or ("yoy_ratio" in row) for row in rows)
+        return (1 if has_priority_field else 0, len(rows), 1)
+
+    def _is_better_chart_result(self, candidate_rows: list[dict[str, Any]], current_rows: list[dict[str, Any]]) -> bool:
+        if not candidate_rows:
+            return False
+        if not current_rows:
+            return True
+        return self._chart_row_score(candidate_rows) > self._chart_row_score(current_rows)
+
+    def _is_superlative_question(self, question: str) -> bool:
+        return any(token in question for token in ["最大", "最高", "最低", "最多", "最少", "最快", "最慢", "第一", "排名"])
+
+    def _build_superlative_summary(self, question: str, row: dict[str, Any], intent: dict[str, Any], content: str) -> str:
+        company = str(row.get("stock_abbr") or "该公司")
+        if "yoy_ratio" in row and row.get("yoy_ratio") is not None:
+            ratio = abs(float(row["yoy_ratio"])) * 100
+            direction = "增长" if float(row["yoy_ratio"]) >= 0 else "下降"
+            if "是" in question:
+                prefix = question.split("是", 1)[0] + "是"
+            else:
+                prefix = "排名第一的是"
+            return f"{prefix}{company}，同比{direction}{ratio:.2f}%。\n{content}"
+        return f"排名第一的是{company}。\n{content}"
 
 
 def format_research_answer_payload(answer: ResearchAnswer) -> str:

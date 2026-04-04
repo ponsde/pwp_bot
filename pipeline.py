@@ -14,23 +14,9 @@ logger = logging.getLogger(__name__)
 
 
 def _safe_chart_data(rows: list[dict]) -> list[dict]:
-    """Build chart-friendly data, handling non-numeric first columns (e.g. report_period)."""
-    data = []
-    for row in rows:
-        items = list(row.items())
-        if len(items) >= 2:
-            label = str(items[0][1])
-            value = items[1][1]
-        elif len(items) == 1:
-            label = str(len(data) + 1)
-            value = items[0][1]
-        else:
-            continue
-        try:
-            data.append({"label": label, "value": float(value)})
-        except (ValueError, TypeError):
-            continue
-    return data
+    """Build chart-friendly data — delegates to shared chart utility."""
+    from src.query.chart import safe_chart_data
+    return safe_chart_data(rows)
 
 
 def run_etl(input_dir: str, db_path: str) -> dict[str, object]:
@@ -209,7 +195,7 @@ def run_answer(questions_path: str, db_path: str, output_xlsx: str) -> str:
                     question,
                 ) if chart_data else None
                 images = [image] if image else []
-                content = build_answer_content(question, result.rows)
+                content = build_answer_content(question, result.rows, intent=result.intent)
                 if result.warning:
                     content += f"\n（注：{result.warning}）"
 
