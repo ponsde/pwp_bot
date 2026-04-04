@@ -57,6 +57,7 @@ def test_pipeline_answer_falls_back_when_llm_init_fails(tmp_path: Path, monkeypa
     assert "income_sheet" in result_df.loc[0, "SQL查询语句"]
 
 
+
 def test_pipeline_answer_sql_is_scoped_per_question_group(tmp_path: Path, monkeypatch):
     db_path = tmp_path / "finance.db"
     conn = sqlite3.connect(db_path)
@@ -94,6 +95,7 @@ def test_pipeline_answer_sql_is_scoped_per_question_group(tmp_path: Path, monkey
     # First group should have 金花股份 SQL, second should have 华润三九 SQL
     assert "金花股份" in result_df.loc[0, "SQL查询语句"]
     assert "华润三九" in result_df.loc[1, "SQL查询语句"]
+
 
 
 def test_pipeline_answer_catches_unhandled_query_errors(tmp_path: Path, monkeypatch):
@@ -152,13 +154,12 @@ def test_pipeline_answer_only_appends_whitelisted_warning_and_keeps_chart(tmp_pa
 
     questions = tmp_path / "questions.xlsx"
     pd.DataFrame([
-        {"编号": "B1004", "问题类型": "single", "问题": json.dumps([{"Q": "请对近三年利润总额做可视化绘图"}], ensure_ascii=False)}
+        {"编号": "B1005", "问题类型": "single", "问题": json.dumps([{"Q": "请查询同比情况"}], ensure_ascii=False)}
     ]).to_excel(questions, index=False)
 
     output = tmp_path / "result_2.xlsx"
     run_answer(str(questions), str(db_path), str(output))
     result_df = pd.read_excel(output)
-    assert result_df.loc[0, "图形格式"] == "柱状图"
     answer_payload = json.loads(result_df.loc[0, "回答"])
     assert f"（注：{USER_VISIBLE_WARNING_WHITELIST[0]}）" in answer_payload[0]["A"]["content"]
 

@@ -1,26 +1,61 @@
 """Rule-based chart selection and rendering."""
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Sequence
 
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from matplotlib import font_manager
+
+logger = logging.getLogger(__name__)
 
 # Chinese font support — try common CJK fonts, fall back gracefully
 _FONT_CANDIDATES = [
     "SimHei", "WenQuanYi Micro Hei", "Noto Sans CJK SC",
     "Microsoft YaHei", "PingFang SC", "Source Han Sans SC",
 ]
-for _font in _FONT_CANDIDATES:
-    try:
-        matplotlib.font_manager.findfont(_font, fallback_to_default=False)
-        plt.rcParams["font.sans-serif"] = [_font] + plt.rcParams.get("font.sans-serif", [])
+_FALLBACK_FONT_PATH = Path("/usr/share/fonts/truetype/wqy/wqy-microhei.ttc")
+
+
+def _configure_cjk_font(
+    fallback_font_path: Path | None = None,
+) -> str | None:
+    """Configure matplotlib CJK font, falling back to a known system font path.
+
+    Returns the selected font family name/path when configured, otherwise None.
+    """
+    for font_name in _FONT_CANDIDATES:
+        try:
+            font_manager.findfont(font_name, fallback_to_default=False)
+        except Exception:
+            continue
+
+        plt.rcParams["font.sans-serif"] = [font_name] + plt.rcParams.get("font.sans-serif", [])
         plt.rcParams["axes.unicode_minus"] = False
-        break
-    except Exception:
-        continue
+        return font_name
+
+    fallback_path = fallback_font_path or _FALLBACK_FONT_PATH
+    if fallback_path.exists():
+        try:
+            font_properties = font_manager.FontProperties(fname=str(fallback_path))
+            font_name = font_properties.get_name()
+            current_fonts = plt.rcParams.get("font.sans-serif", [])
+            plt.rcParams["font.sans-serif"] = [font_name] + [font for font in current_fonts if font != font_name]
+            plt.rcParams["axes.unicode_minus"] = False
+            return str(fallback_path)
+        except Exception as exc:
+            logger.warning("Failed to load fallback CJK font from %s: %s", fallback_path, exc)
+
+    logger.warning(
+        "No CJK font found; matplotlib default font will be used and Chinese characters may not render correctly."
+    )
+    return None
+
+
+_configure_cjk_font()
 
 
 def pick_chart_columns(row: dict) -> tuple[str | None, object | None]:
