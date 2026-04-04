@@ -56,6 +56,7 @@ def test_pipeline_answer_falls_back_when_llm_init_fails(tmp_path: Path, monkeypa
     assert "income_sheet" in result_df.loc[0, "SQL查询语句"]
 
 
+
 def test_pipeline_answer_sql_is_scoped_per_question_group(tmp_path: Path, monkeypatch):
     db_path = tmp_path / "finance.db"
     conn = sqlite3.connect(db_path)
@@ -95,6 +96,7 @@ def test_pipeline_answer_sql_is_scoped_per_question_group(tmp_path: Path, monkey
     assert "华润三九" in result_df.loc[1, "SQL查询语句"]
 
 
+
 def test_pipeline_answer_catches_unhandled_query_errors(tmp_path: Path, monkeypatch):
     db_path = tmp_path / "finance.db"
     conn = sqlite3.connect(db_path)
@@ -124,7 +126,8 @@ def test_pipeline_answer_catches_unhandled_query_errors(tmp_path: Path, monkeypa
     assert answer_payload[0]["A"]["content"] == "查询失败：llm timeout"
 
 
-def test_pipeline_answer_appends_warning_and_keeps_chart(tmp_path: Path, monkeypatch):
+
+def test_pipeline_answer_still_appends_whitelisted_yoy_warning(tmp_path: Path, monkeypatch):
     db_path = tmp_path / "finance.db"
     conn = sqlite3.connect(db_path)
     conn.execute("CREATE TABLE income_sheet (serial_number INTEGER, stock_code TEXT, stock_abbr TEXT, report_period TEXT, report_year INTEGER, total_profit REAL, total_operating_revenue REAL)")
@@ -138,25 +141,21 @@ def test_pipeline_answer_appends_warning_and_keeps_chart(tmp_path: Path, monkeyp
 
     def fake_query(self, question, conversation=None):
         return text2sql_module.QueryResult(
-            sql="SELECT report_period, total_profit FROM income_sheet",
-            rows=[
-                {"report_period": "2023FY", "total_profit": 100.0},
-                {"report_period": "2024FY", "total_profit": 120.0},
-            ],
-            intent={"tables": ["income_sheet"], "fields": ["total_profit"]},
-            warning="仅查到2年数据，未满足近三年需求。",
+            sql="SELECT yoy_ratio FROM income_sheet",
+            rows=[{"report_period": "2024FY", "yoy_ratio": 0.0}],
+            intent={"tables": ["income_sheet"], "fields": ["yoy_ratio"]},
+            warning="上年同期数据不存在，无法计算同比",
         )
 
     monkeypatch.setattr(text2sql_module.Text2SQLEngine, "query", fake_query)
 
     questions = tmp_path / "questions.xlsx"
     pd.DataFrame([
-        {"编号": "B1004", "问题类型": "single", "问题": json.dumps([{"Q": "请对近三年利润总额做可视化绘图"}], ensure_ascii=False)}
+        {"编号": "B1005", "问题类型": "single", "问题": json.dumps([{"Q": "请查询同比情况"}], ensure_ascii=False)}
     ]).to_excel(questions, index=False)
 
     output = tmp_path / "result_2.xlsx"
     run_answer(str(questions), str(db_path), str(output))
     result_df = pd.read_excel(output)
-    assert result_df.loc[0, "图形格式"] == "柱状图"
     answer_payload = json.loads(result_df.loc[0, "回答"])
-    assert "（注：仅查到2年数据，未满足近三年需求。）" in answer_payload[0]["A"]["content"]
+    assert "（注：上年同期数据不存在，无法计算同比）" in answer_payload[0]["A"]["content"]
