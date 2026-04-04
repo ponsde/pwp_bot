@@ -1,5 +1,6 @@
 from src.knowledge.research_qa import ResearchQAEngine
 from src.knowledge.retriever import RetrievalItem
+from src.query.constants import USER_VISIBLE_WARNING_WHITELIST
 from src.query.conversation import ConversationManager
 from src.query.text2sql import QueryResult
 
@@ -160,3 +161,18 @@ def test_answer_sql_prefers_most_chartable_subquestion_result():
         {'stock_abbr': 'C', 'yoy_ratio': 0.3},
     ]
     assert answer.chart_type == 'bar'
+
+
+def test_format_sql_result_does_not_append_warning_to_user_output():
+    engine = FakeEngine()
+    result = QueryResult(
+        sql='SELECT net_profit FROM income_sheet',
+        rows=[{'current_value': 10.0, 'previous_value': 0.0, 'yoy_ratio': None}],
+        intent={'fields': ['net_profit']},
+        warning=USER_VISIBLE_WARNING_WHITELIST[0],
+    )
+
+    content = engine._format_sql_result('华润三九2024年净利润同比', result)
+
+    assert USER_VISIBLE_WARNING_WHITELIST[0] not in content
+    assert '注：' not in content

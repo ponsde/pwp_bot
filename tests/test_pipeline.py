@@ -5,6 +5,7 @@ import sqlite3
 import pandas as pd
 
 from pipeline import run_answer
+from src.query.constants import USER_VISIBLE_WARNING_WHITELIST
 
 
 def test_pipeline_answer_end_to_end(tmp_path: Path):
@@ -124,7 +125,7 @@ def test_pipeline_answer_catches_unhandled_query_errors(tmp_path: Path, monkeypa
     assert answer_payload[0]["A"]["content"] == "查询失败：llm timeout"
 
 
-def test_pipeline_answer_appends_warning_and_keeps_chart(tmp_path: Path, monkeypatch):
+def test_pipeline_answer_only_appends_whitelisted_warning_and_keeps_chart(tmp_path: Path, monkeypatch):
     db_path = tmp_path / "finance.db"
     conn = sqlite3.connect(db_path)
     conn.execute("CREATE TABLE income_sheet (serial_number INTEGER, stock_code TEXT, stock_abbr TEXT, report_period TEXT, report_year INTEGER, total_profit REAL, total_operating_revenue REAL)")
@@ -144,7 +145,7 @@ def test_pipeline_answer_appends_warning_and_keeps_chart(tmp_path: Path, monkeyp
                 {"report_period": "2024FY", "total_profit": 120.0},
             ],
             intent={"tables": ["income_sheet"], "fields": ["total_profit"]},
-            warning="仅查到2年数据，未满足近三年需求。",
+            warning=USER_VISIBLE_WARNING_WHITELIST[0],
         )
 
     monkeypatch.setattr(text2sql_module.Text2SQLEngine, "query", fake_query)
@@ -159,4 +160,80 @@ def test_pipeline_answer_appends_warning_and_keeps_chart(tmp_path: Path, monkeyp
     result_df = pd.read_excel(output)
     assert result_df.loc[0, "图形格式"] == "柱状图"
     answer_payload = json.loads(result_df.loc[0, "回答"])
-    assert "（注：仅查到2年数据，未满足近三年需求。）" in answer_payload[0]["A"]["content"]
+    assert f"（注：{USER_VISIBLE_WARNING_WHITELIST[0]}）" in answer_payload[0]["A"]["content"]
+
+
+def test_pipeline_answer_hides_non_whitelisted_warning_from_user_output(tmp_path: Path, monkeypatch, caplog):
+    db_path = tmp_path / "finance.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute("CREATE TABLE income_sheet (serial_number INTEGER, stock_code TEXT, stock_abbr TEXT, report_period TEXT, report_year INTEGER, total_profit REAL, total_operating_revenue REAL)")
+    conn.execute("CREATE TABLE balance_sheet (serial_number INTEGER, stock_code TEXT, stock_abbr TEXT, report_period TEXT, report_year INTEGER, asset_total_assets REAL)")
+    conn.execute("CREATE TABLE cash_flow_sheet (serial_number INTEGER, stock_code TEXT, stock_abbr TEXT, report_period TEXT, report_year INTEGER, net_cash_flow REAL)")
+    conn.execute("CREATE TABLE core_performance_indicators_sheet (serial_number INTEGER, stock_code TEXT, stock_abbr TEXT, report_period TEXT, report_year INTEGER, eps REAL)")
+    conn.commit()
+    conn.close()
+
+    from src.query import text2sql as text2sql_module
+
+    hidden_warning = "原始问题本身是一个待补充/澄清的提问模板，当前结果仅供参考。"
+
+    def fake_query(self, question, conversation=None):
+        return text2sql_module.QueryResult(
+            sql="SELECT total_profit FROM income_sheet",
+            rows=[{"total_profit": 100.0}],
+            intent={"tables": ["income_sheet"], "fields": ["total_profit"]},
+            warning=hidden_warning,
+        )
+
+    monkeypatch.setattr(text2sql_module.Text2SQLEngine, "query", fake_query)
+
+    questions = tmp_path / "questions.xlsx"
+    pd.DataFrame([
+        {"编号": "B1005", "问题类型": "single", "问题": json.dumps([{"Q": "金花股份利润总额是多少"}], ensure_ascii=False)}
+    ]).to_excel(questions, index=False)
+
+    output = tmp_path / "result_2.xlsx"
+    with caplog.at_level("INFO"):
+        run_answer(str(questions), str(db_path), str(output))
+    result_df = pd.read_excel(output)
+    answer_payload = json.loads(result_df.loc[0, "回答"])
+    assert hidden_warning not in answer_payload[0]["A"]["content"]
+    assert f"Query warning: {hidden_warning}" in caplog.text
+
+
+def test_pipeline_answer_hides_similar_but_non_whitelisted_yoy_warning(tmp_path: Path, monkeypatch, caplog):
+    db_path = tmp_path / "finance.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute("CREATE TABLE income_sheet (serial_number INTEGER, stock_code TEXT, stock_abbr TEXT, report_period TEXT, report_year INTEGER, total_profit REAL, total_operating_revenue REAL)")
+    conn.execute("CREATE TABLE balance_sheet (serial_number INTEGER, stock_code TEXT, stock_abbr TEXT, report_period TEXT, report_year INTEGER, asset_total_assets REAL)")
+    conn.execute("CREATE TABLE cash_flow_sheet (serial_number INTEGER, stock_code TEXT, stock_abbr TEXT, report_period TEXT, report_year INTEGER, net_cash_flow REAL)")
+    conn.execute("CREATE TABLE core_performance_indicators_sheet (serial_number INTEGER, stock_code TEXT, stock_abbr TEXT, report_period TEXT, report_year INTEGER, eps REAL)")
+    conn.commit()
+    conn.close()
+
+    from src.query import text2sql as text2sql_module
+
+    hidden_warning = "上年同期数据不存在，但系统已自动回退到近似口径。"
+
+    def fake_query(self, question, conversation=None):
+        return text2sql_module.QueryResult(
+            sql="SELECT net_profit FROM income_sheet",
+            rows=[{"net_profit": 100.0}],
+            intent={"tables": ["income_sheet"], "fields": ["net_profit"]},
+            warning=hidden_warning,
+        )
+
+    monkeypatch.setattr(text2sql_module.Text2SQLEngine, "query", fake_query)
+
+    questions = tmp_path / "questions.xlsx"
+    pd.DataFrame([
+        {"编号": "B1006", "问题类型": "single", "问题": json.dumps([{"Q": "华润三九2024年净利润同比"}], ensure_ascii=False)}
+    ]).to_excel(questions, index=False)
+
+    output = tmp_path / "result_2.xlsx"
+    with caplog.at_level("INFO"):
+        run_answer(str(questions), str(db_path), str(output))
+    result_df = pd.read_excel(output)
+    answer_payload = json.loads(result_df.loc[0, "回答"])
+    assert hidden_warning not in answer_payload[0]["A"]["content"]
+    assert f"Query warning: {hidden_warning}" in caplog.text

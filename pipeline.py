@@ -9,6 +9,7 @@ from pathlib import Path
 import openpyxl
 
 from config import OV_CONFIG_PATH, OV_DATA_DIR, REPORTS_DIR, RESEARCH_QUESTIONS_XLSX
+from src.query.constants import USER_VISIBLE_WARNING_WHITELIST
 
 logger = logging.getLogger(__name__)
 
@@ -197,7 +198,9 @@ def run_answer(questions_path: str, db_path: str, output_xlsx: str) -> str:
                 images = [image] if image else []
                 content = build_answer_content(question, result.rows, intent=result.intent)
                 if result.warning:
-                    content += f"\n（注：{result.warning}）"
+                    logger.info("Query warning: %s", result.warning)
+                    if result.warning in USER_VISIBLE_WARNING_WHITELIST:
+                        content += f"\n（注：{result.warning}）"
 
             conversation.add_assistant_message(content)
             turn_records.append(
