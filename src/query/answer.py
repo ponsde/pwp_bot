@@ -93,6 +93,20 @@ def _format_yoy_row(row: dict[str, Any], intent_fields: list[str] | None = None)
     return f"{prefix}{subject}同比{direction}{ratio_text}（本期{current_value}，上期{previous_value}）"
 
 
+def _display_label(field_name: str) -> str:
+    return _FIELD_LABELS.get(field_name, field_name)
+
+
+def _format_single_value(field_name: str, value: Any) -> str:
+    field_label = _display_label(field_name)
+    unit = _FIELD_UNITS.get(field_name, "")
+    if unit == "%" and "同比" in field_label and isinstance(value, (int, float)):
+        direction = "增长" if value >= 0 else "下降"
+        base_name = re.sub(r"[-\s]*(同比)?[增减降长]*$", "", field_label).strip() or field_name
+        return f"{base_name}同比{direction}{abs(float(value)):.2f}%。"
+    return f"{field_label}{format_number(value, unit)}。"
+
+
 def build_answer_content(question: str, rows: Sequence[dict], intent: dict[str, Any] | None = None) -> str:
     if not rows:
         return "未查询到符合条件的数据。"
@@ -102,22 +116,25 @@ def build_answer_content(question: str, rows: Sequence[dict], intent: dict[str, 
     if len(rows) == 1 and len(rows[0]) == 1:
         field_name = next(iter(rows[0].keys()))
         value = next(iter(rows[0].values()))
-        unit = _FIELD_UNITS.get(field_name, "")
-        return f"{question}：{format_number(value, unit)}。"
+        return _format_single_value(field_name, value)
     # Multi-row: build a readable summary
     parts = []
     for row in rows:
-        identifiers = [str(row[field]) for field in ("stock_abbr", "report_period") if row.get(field) not in (None, "")]
+        identifiers = [
+            _format_report_period(row[field]) if field == "report_period" else str(row[field])
+            for field in ("stock_abbr", "report_period")
+            if row.get(field) not in (None, "")
+        ]
         items = []
         for k, v in row.items():
             if k in META_FIELDS or k in IDENTIFIER_FIELDS:
                 continue
             unit = _FIELD_UNITS.get(k, "")
             display_value = format_number(v, unit) if isinstance(v, (int, float)) else v
-            display_name = _FIELD_LABELS.get(k, k)
+            display_name = _display_label(k)
             if unit == "%" and isinstance(v, (int, float)) and "同比" in display_name:
                 direction = "增长" if v >= 0 else "下降"
-                base_name = re.sub(r"[-\s]*(同比)?[增减降长]*$", "", display_name).strip()
+                base_name = re.sub(r"[-\s]*(同比)?[增减降长]*$", "", display_name).strip() or k
                 items.append(f"{base_name}同比{direction}{abs(v):.2f}%")
             else:
                 items.append(f"{display_name}={display_value}")
