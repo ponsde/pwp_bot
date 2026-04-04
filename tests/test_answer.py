@@ -9,7 +9,7 @@ from src.query.chart import safe_chart_data
 
 def test_answer_format_and_xlsx(tmp_path: Path):
     content = build_answer_content("利润总额是多少", [{"total_profit": 3140}])
-    assert "3,140.00万元" in content
+    assert "利润总额3,140.00万元。" == content
     record = build_answer_record("利润总额是多少", content, ["result/a.jpg"], chart_type="bar")
     output = tmp_path / "result_2.xlsx"
     write_result_xlsx([record], str(output), {"利润总额是多少": "SELECT 1"})
@@ -20,15 +20,18 @@ def test_answer_format_and_xlsx(tmp_path: Path):
 
 def test_build_answer_content_keeps_company_and_period_identifiers():
     rows = [
-        {"stock_abbr": "金花股份", "report_period": "2023FY", "total_operating_revenue": 56500},
-        {"stock_abbr": "华润三九", "report_period": "2023FY", "total_operating_revenue": 2473900},
+        {"stock_abbr": "金花股份", "report_period": "2022FY", "total_operating_revenue": 56500},
+        {"stock_abbr": "华润三九", "report_period": "2024Q3", "total_operating_revenue": 2473900},
     ]
 
     content = build_answer_content("对比两家公司营收", rows)
 
     assert "金花股份" in content
     assert "华润三九" in content
-    assert "2023FY" in content
+    assert "2022年" in content
+    assert "2024年第三季度" in content
+    assert "2022FY" not in content
+    assert "2024Q3" not in content
     assert "5.65亿元" in content
     assert "247.39亿元" in content
     # Field names should be Chinese labels, not raw DB column names
@@ -75,6 +78,28 @@ def test_build_answer_content_formats_yoy_decline_and_none():
     )
     assert "同比下降15.00%" in decline
     assert "无法计算同比（上期值为零）" in none_case
+
+
+def test_build_answer_content_single_value_does_not_echo_question_text():
+    question = "在这些企业中利润最高的是哪家"
+    content = build_answer_content(question, [{"total_profit": 50000.00}])
+
+    assert content == "利润总额5.00亿元。"
+    assert question not in content
+
+
+def test_build_answer_content_single_value_formats_yoy_field_naturally():
+    question = "在这些企业中年同比上涨幅度最大的是哪家企业"
+    content = build_answer_content(question, [{"net_profit_yoy_growth": 271.60}])
+
+    assert content == "净利润同比增长271.60%。"
+    assert question not in content
+
+
+def test_build_answer_content_single_value_falls_back_to_raw_field_name_when_label_missing():
+    content = build_answer_content("任意问题", [{"unknown_metric": 12.5}])
+
+    assert content == "unknown_metric12.50。"
 
 
 def test_safe_chart_data_picks_numeric_value_from_multi_column_rows():
