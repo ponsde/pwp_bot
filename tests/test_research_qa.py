@@ -176,3 +176,59 @@ def test_format_sql_result_does_not_append_warning_to_user_output():
 
     assert USER_VISIBLE_WARNING_WHITELIST[0] not in content
     assert '注：' not in content
+
+
+def test_answer_sql_deduplicates_overlapping_lines_across_subquestions():
+    class DedupSQL:
+        def __init__(self):
+            self.calls = 0
+
+        def query(self, question, conversation=None):
+            self.calls += 1
+            if self.calls == 1:
+                return QueryResult(
+                    sql='SELECT stock_abbr, total_profit FROM income_sheet WHERE stock_abbr = "金花股份"',
+                    rows=[{'stock_abbr': '金花股份', 'total_profit': 4203.93}],
+                    intent={'fields': ['total_profit']},
+                )
+            return QueryResult(
+                sql='SELECT stock_abbr, total_profit, yoy_ratio FROM income_sheet WHERE stock_abbr = "金花股份"',
+                rows=[{'stock_abbr': '金花股份', 'total_profit': 4203.93}],
+                intent={'fields': ['total_profit']},
+            )
+
+    class DedupEngine(FakeEngine):
+        def __init__(self):
+            super().__init__()
+            self.sql_engine = DedupSQL()
+
+        def classify_intent(self, question: str) -> str:
+            return 'sql'
+
+        def split_multi_intent(self, question: str, conversation: ConversationManager | None = None) -> list[str]:
+            return ['先问利润总额？', '再问这些公司的利润总额？']
+
+    answer = DedupEngine().answer_question('复合问题')
+
+    assert answer.answer.count('金花股份：利润总额=4,203.93万元') == 1
+
+
+def test_answer_sql_dedup_preserves_unique_lines_in_first_seen_order():
+    engine = FakeEngine()
+    text = '金花股份：利润总额=4,203.93万元\n华润三九：利润总额=1,000.00万元\n金花股份：利润总额=4,203.93万元\n同仁堂：利润总额=900.00万元'
+
+    assert engine._deduplicate_answer_lines(text) == (
+        '金花股份：利润总额=4,203.93万元\n'
+        '华润三九：利润总额=1,000.00万元\n'
+        '同仁堂：利润总额=900.00万元'
+    )
+
+
+def test_answer_sql_dedup_treats_whitespace_only_differences_as_duplicates():
+    engine = FakeEngine()
+    text = '金花股份：利润总额=4,203.93万元\n  金花股份：利润总额=4,203.93万元  \n同仁堂：利润总额=900.00万元'
+
+    assert engine._deduplicate_answer_lines(text) == (
+        '金花股份：利润总额=4,203.93万元\n'
+        '同仁堂：利润总额=900.00万元'
+    )
