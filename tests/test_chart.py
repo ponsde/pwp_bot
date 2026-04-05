@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from src.query import chart as chart_module
-from src.query.chart import render_chart, select_chart_type
+from src.query.chart import render_chart, safe_chart_data, select_chart_type, pick_chart_columns
 
 
 def test_select_chart_type_rules(tmp_path: Path):
@@ -59,3 +59,81 @@ def test_configure_cjk_font_logs_warning_when_no_font_available(monkeypatch, cap
 
     assert selected is None
     assert "No CJK font found" in caplog.text
+
+
+def test_safe_chart_data_formats_report_period_labels():
+    rows = [{"report_period": "2022FY", "total_operating_revenue": 56500}]
+
+    chart_data = safe_chart_data(rows)
+
+    assert chart_data == [{"label": "2022年", "value": 56500.0}]
+
+
+def test_pick_chart_columns_formats_report_period_label_when_used_as_axis_field():
+    label, value, label_field = pick_chart_columns({"report_period": "2024Q3", "total_profit": 3140})
+
+    assert label == "2024年第三季度"
+    assert value == 3140
+    assert label_field == "report_period"
+
+
+def test_render_chart_annotations_include_unit_suffix(monkeypatch, tmp_path: Path):
+    output = tmp_path / "chart.jpg"
+    annotations: list[str] = []
+
+    class FakeAxes:
+        def plot(self, *args, **kwargs):
+            return None
+
+        def annotate(self, text, *args, **kwargs):
+            annotations.append(text)
+
+        def pie(self, *args, **kwargs):
+            return None
+
+        def bar(self, labels, values, color=None):
+            class FakeBar:
+                def __init__(self, x, height):
+                    self._x = x
+                    self._height = height
+
+                def get_x(self):
+                    return self._x
+
+                def get_width(self):
+                    return 1.0
+
+                def get_height(self):
+                    return self._height
+
+            return [FakeBar(idx, value) for idx, value in enumerate(values)]
+
+        def text(self, x, y, text, **kwargs):
+            annotations.append(text)
+
+        def set_title(self, *args, **kwargs):
+            return None
+
+        def tick_params(self, *args, **kwargs):
+            return None
+
+        def set_ylabel(self, *args, **kwargs):
+            return None
+
+    class FakeFigure:
+        def tight_layout(self):
+            return None
+
+        def savefig(self, path, format=None, dpi=None):
+            Path(path).write_bytes(b"fake")
+
+    monkeypatch.setattr(chart_module.plt, "subplots", lambda figsize=None: (FakeFigure(), FakeAxes()))
+    monkeypatch.setattr(chart_module.plt, "close", lambda fig: None)
+
+    line_path = render_chart("line", [{"label": "2022年", "value": 47_901_000}], str(output), "test")
+    bar_path = render_chart("bar", [{"label": "2022年", "value": 4_594_000_000}], str(output), "test")
+
+    assert line_path == str(output)
+    assert bar_path == str(output)
+    assert "4,790.10万元" in annotations
+    assert "45.94亿元" in annotations

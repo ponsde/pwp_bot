@@ -10,6 +10,8 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib import font_manager
 
+from src.query.answer import _format_report_period
+
 logger = logging.getLogger(__name__)
 
 # Chinese font support — try common CJK fonts, fall back gracefully
@@ -58,7 +60,7 @@ def _configure_cjk_font(
 _configure_cjk_font()
 
 
-def pick_chart_columns(row: dict) -> tuple[str | None, object | None]:
+def pick_chart_columns(row: dict) -> tuple[str | None, object | None, str | None]:
     """Intelligently select label and value columns from a result row for charting."""
     preferred_label_fields = ["stock_abbr", "report_period"]
     preferred_value_fields = ["yoy_ratio"]
@@ -80,16 +82,19 @@ def pick_chart_columns(row: dict) -> tuple[str | None, object | None]:
         elif label_field and isinstance(row.get(label_field), (int, float)):
             value_field = label_field
 
-    label = str(row.get(label_field)) if label_field and row.get(label_field) not in (None, "") else None
+    label = None
+    if label_field and row.get(label_field) not in (None, ""):
+        label_value = row.get(label_field)
+        label = _format_report_period(label_value) if label_field == "report_period" else str(label_value)
     value = row.get(value_field) if value_field else None
-    return label, value
+    return label, value, label_field
 
 
 def safe_chart_data(rows: Sequence[dict]) -> list[dict]:
     """Build chart-friendly data with smart label/value column selection."""
     data = []
     for row in rows:
-        label, value = pick_chart_columns(row)
+        label, value, _ = pick_chart_columns(row)
         if value is None:
             continue
         if label is None:
@@ -147,13 +152,13 @@ def render_chart(
     if chart_type == "line":
         ax.plot(labels, values, marker="o", linewidth=2)
         for i, v in enumerate(values):
-            ax.annotate(f"{v:,.2f}", (labels[i], v), textcoords="offset points", xytext=(0, 8), ha="center", fontsize=8)
+            ax.annotate(f"{v:,.2f}{unit_label}", (labels[i], v), textcoords="offset points", xytext=(0, 8), ha="center", fontsize=8)
     elif chart_type == "pie":
         ax.pie(raw_values, labels=labels, autopct="%1.1f%%", startangle=90)
     else:
         bars = ax.bar(labels, values, color="#4C8BF5")
         for bar, v in zip(bars, values):
-            ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height(), f"{v:,.2f}", ha="center", va="bottom", fontsize=8)
+            ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height(), f"{v:,.2f}{unit_label}", ha="center", va="bottom", fontsize=8)
     ax.set_title(title, fontsize=12)
     if chart_type != "pie":
         ax.tick_params(axis="x", rotation=30)
