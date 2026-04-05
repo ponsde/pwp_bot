@@ -491,5 +491,6 @@ def test_yoy_fallback_when_previous_period_missing(tmp_path: Path):
     result = engine.query("华润三九2024年净利润同比")
     assert result.error is None
     assert result.warning == "上年同期数据不存在，无法计算同比"
+    assert result.intent.get("yoy_fallback") is True
     assert result.rows[0]["stock_abbr"] == "华润三九"
     assert result.rows[0]["net_profit"] == 400000000

@@ -102,6 +102,18 @@ def test_build_answer_content_single_value_falls_back_to_raw_field_name_when_lab
     assert content == "unknown_metric12.50。"
 
 
+def test_build_answer_content_yoy_fallback_appends_unavailable_note():
+    content = build_answer_content(
+        "华润三九2024年净利润同比是多少",
+        [{"stock_abbr": "华润三九", "report_period": "2024FY", "net_profit": 400000000}],
+        intent={"fields": ["net_profit"], "yoy": True, "yoy_fallback": True},
+    )
+
+    assert "华润三九，2024年" in content
+    assert "净利润=40,000.00万元" in content
+    assert content.endswith("（无法计算同比，仅显示本期值）")
+
+
 def test_safe_chart_data_picks_numeric_value_from_multi_column_rows():
     rows = [
         {
