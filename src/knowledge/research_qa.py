@@ -114,12 +114,28 @@ class ResearchQAEngine:
         return ResearchAnswer(
             question=question,
             route="sql",
-            answer="\n".join(answer_parts),
+            answer=self._deduplicate_answer_lines("\n".join(answer_parts)),
             sql="\n\n".join(sql_parts),
             chart_type=self._select_chart_type(question, chart_rows),
             references=[],
             chart_rows=chart_rows,
         )
+
+    def _deduplicate_answer_lines(self, answer: str) -> str:
+        if not answer:
+            return answer
+        deduplicated_lines: list[str] = []
+        seen_lines: set[str] = set()
+        for line in answer.split("\n"):
+            normalized_line = line.strip()
+            if not normalized_line:
+                deduplicated_lines.append(line)
+                continue
+            if normalized_line in seen_lines:
+                continue
+            seen_lines.add(normalized_line)
+            deduplicated_lines.append(line)
+        return "\n".join(deduplicated_lines)
 
     def _answer_rag(self, question: str) -> ResearchAnswer:
         items = self.retriever.search(question, top_k=5)
