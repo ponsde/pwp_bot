@@ -70,8 +70,6 @@ def _resolve_intent_field(intent: dict[str, Any] | None) -> str | None:
 def _format_metric_value(value: Any, unit: str) -> str:
     if unit == "元" and isinstance(value, (int, float)):
         return format_number(float(value) / 10000, "万元")
-    if unit == "万元" and isinstance(value, (int, float)) and abs(float(value)) >= 1_000_000:
-        return f"{float(value) / 10000:,.2f}万元"
     return format_number(value, unit)
 
 
@@ -116,34 +114,38 @@ def build_answer_content(question: str, rows: Sequence[dict], intent: dict[str, 
     if len(rows) == 1 and len(rows[0]) == 1:
         field_name = next(iter(rows[0].keys()))
         value = next(iter(rows[0].values()))
-        return _format_single_value(field_name, value)
-    # Multi-row: build a readable summary
-    parts = []
-    for row in rows:
-        identifiers = [
-            _format_report_period(row[field]) if field == "report_period" else str(row[field])
-            for field in ("stock_abbr", "report_period")
-            if row.get(field) not in (None, "")
-        ]
-        items = []
-        for k, v in row.items():
-            if k in META_FIELDS or k in IDENTIFIER_FIELDS:
-                continue
-            unit = _FIELD_UNITS.get(k, "")
-            display_value = format_number(v, unit) if isinstance(v, (int, float)) else v
-            display_name = _display_label(k)
-            if unit == "%" and isinstance(v, (int, float)) and "同比" in display_name:
-                direction = "增长" if v >= 0 else "下降"
-                base_name = re.sub(r"[-\s]*(同比)?[增减降长]*$", "", display_name).strip() or k
-                items.append(f"{base_name}同比{direction}{abs(v):.2f}%")
-            else:
-                items.append(f"{display_name}={display_value}")
-        line = "，".join(identifiers)
-        if items:
-            metrics = "，".join(items)
-            line = f"{line}：{metrics}" if line else metrics
-        parts.append(line or "-")
-    return "\n".join(parts)
+        content = _format_single_value(field_name, value)
+    else:
+        # Multi-row: build a readable summary
+        parts = []
+        for row in rows:
+            identifiers = [
+                _format_report_period(row[field]) if field == "report_period" else str(row[field])
+                for field in ("stock_abbr", "report_period")
+                if row.get(field) not in (None, "")
+            ]
+            items = []
+            for k, v in row.items():
+                if k in META_FIELDS or k in IDENTIFIER_FIELDS:
+                    continue
+                unit = _FIELD_UNITS.get(k, "")
+                display_value = format_number(v, unit) if isinstance(v, (int, float)) else v
+                display_name = _display_label(k)
+                if unit == "%" and isinstance(v, (int, float)) and "同比" in display_name:
+                    direction = "增长" if v >= 0 else "下降"
+                    base_name = re.sub(r"[-\s]*(同比)?[增减降长]*$", "", display_name).strip() or k
+                    items.append(f"{base_name}同比{direction}{abs(v):.2f}%")
+                else:
+                    items.append(f"{display_name}={display_value}")
+            line = "，".join(identifiers)
+            if items:
+                metrics = "，".join(items)
+                line = f"{line}：{metrics}" if line else metrics
+            parts.append(line or "-")
+        content = "\n".join(parts)
+    if intent and intent.get("yoy_fallback"):
+        return f"{content}（无法计算同比，仅显示本期值）"
+    return content
 
 
 def build_answer_record(

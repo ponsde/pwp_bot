@@ -194,6 +194,7 @@ class Text2SQLEngine:
             )
             fallback_rows = self._execute_with_retry(fallback_sql, question, current_intent)
             if fallback_rows:
+                current_intent["yoy_fallback"] = True
                 return fallback_sql, fallback_rows, current_intent, "上年同期数据不存在，无法计算同比"
 
         if current_intent.get("yoy") and any(row.get("yoy_ratio") is None for row in current_rows):
