@@ -42,15 +42,15 @@ def test_build_answer_content_formats_yoy_growth_naturally():
     rows = [{
         "stock_abbr": "华润三九",
         "report_period": "2024FY",
-        "current_value": 400000000,
-        "previous_value": 350000000,
-        "yoy_ratio": 0.1429,
+        "current_value": 4500,
+        "previous_value": 3500,
+        "yoy_ratio": 0.2857,
     }]
     content = build_answer_content("华润三九2024年净利润同比是多少", rows, intent={"fields": ["net_profit"]})
-    assert "同比增长14.29%" in content
+    assert "同比增长28.57%" in content
     assert "净利润" in content
-    assert "本期40,000.00万元" in content
-    assert "上期35,000.00万元" in content
+    assert "本期4,500.00万元" in content
+    assert "上期3,500.00万元" in content
 
 
 def test_build_answer_content_formats_yoy_decline_and_none():
@@ -105,12 +105,12 @@ def test_build_answer_content_single_value_falls_back_to_raw_field_name_when_lab
 def test_build_answer_content_yoy_fallback_appends_unavailable_note():
     content = build_answer_content(
         "华润三九2024年净利润同比是多少",
-        [{"stock_abbr": "华润三九", "report_period": "2024FY", "net_profit": 400000000}],
+        [{"stock_abbr": "华润三九", "report_period": "2024FY", "net_profit": 4500}],
         intent={"fields": ["net_profit"], "yoy": True, "yoy_fallback": True},
     )
 
     assert "华润三九，2024年" in content
-    assert "净利润=40,000.00万元" in content
+    assert "净利润=4,500.00万元" in content
     assert content.endswith("（无法计算同比，仅显示本期值）")
 
 
@@ -124,7 +124,8 @@ def test_safe_chart_data_picks_numeric_value_from_multi_column_rows():
             "yoy_ratio": 0.1429,
         }
     ]
-    chart_data = safe_chart_data(rows)
-    pipeline_chart = pipeline_safe_chart_data(rows)
+    chart_data, value_field = safe_chart_data(rows)
+    pipeline_chart, _ = pipeline_safe_chart_data(rows)
     assert chart_data == [{"label": "金花股份", "value": 0.1429}]
+    assert value_field == "yoy_ratio"
     assert pipeline_chart == chart_data

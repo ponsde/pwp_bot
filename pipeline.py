@@ -14,7 +14,7 @@ from src.query.constants import USER_VISIBLE_WARNING_WHITELIST
 logger = logging.getLogger(__name__)
 
 
-def _safe_chart_data(rows: list[dict]) -> list[dict]:
+def _safe_chart_data(rows: list[dict]) -> tuple[list[dict], str | None]:
     """Build chart-friendly data — delegates to shared chart utility."""
     from src.query.chart import safe_chart_data
     return safe_chart_data(rows)
@@ -118,12 +118,13 @@ def run_research(questions_path: str, db_path: str, output_xlsx: str) -> str:
                 chart_type = answer.chart_type
                 chart_rows = getattr(answer, "chart_rows", [])
                 if chart_rows:
-                    chart_data = _safe_chart_data(chart_rows)
+                    chart_data, chart_value_field = _safe_chart_data(chart_rows)
                     chart_image = render_chart(
                         answer.chart_type,
                         chart_data,
                         f"result/{item['id']}_{turn_index}.jpg",
                         question,
+                        value_field=chart_value_field,
                     ) if chart_data else None
             answer_payload = json.loads(format_research_answer_payload(answer))
             if chart_image:
@@ -187,13 +188,14 @@ def run_answer(questions_path: str, db_path: str, output_xlsx: str) -> str:
                 chart_type_str = "none"
                 images = []
             else:
-                chart_data = _safe_chart_data(result.rows)
+                chart_data, chart_vf = _safe_chart_data(result.rows)
                 chart_type_str = select_chart_type(question, chart_data)
                 image = render_chart(
                     chart_type_str,
                     chart_data,
                     f"result/{question_id}_{len(turn_records) + 1}.jpg",
                     question,
+                    value_field=chart_vf,
                 ) if chart_data else None
                 images = [image] if image else []
                 content = build_answer_content(question, result.rows, intent=result.intent)

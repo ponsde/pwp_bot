@@ -64,13 +64,14 @@ def test_configure_cjk_font_logs_warning_when_no_font_available(monkeypatch, cap
 def test_safe_chart_data_formats_report_period_labels():
     rows = [{"report_period": "2022FY", "total_operating_revenue": 56500}]
 
-    chart_data = safe_chart_data(rows)
+    chart_data, value_field = safe_chart_data(rows)
 
     assert chart_data == [{"label": "2022年", "value": 56500.0}]
+    assert value_field == "total_operating_revenue"
 
 
 def test_pick_chart_columns_formats_report_period_label_when_used_as_axis_field():
-    label, value, label_field = pick_chart_columns({"report_period": "2024Q3", "total_profit": 3140})
+    label, value, label_field, value_field = pick_chart_columns({"report_period": "2024Q3", "total_profit": 3140})
 
     assert label == "2024年第三季度"
     assert value == 3140

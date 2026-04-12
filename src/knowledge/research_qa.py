@@ -40,10 +40,43 @@ class ResearchQAEngine:
         self.retriever = retriever or ResearchRetriever(client)
         self.sql_engine = Text2SQLEngine(db_path=db_path, llm_client=llm_client)
 
+    _CLASSIFY_PROMPT = (
+        "你是中药上市公司财报问答系统的路由分类器。\n\n"
+        "数据库中有四张财务报表（利润表、资产负债表、现金流量表、核心经营指标表），"
+        "包含各公司各报告期的财务数字（收入、利润、资产、负债、现金流、同比增长率等）。\n\n"
+        "请判断用户的问题应该走哪条路径：\n"
+        "- sql: 问题可以通过查询财务数据库直接回答（如某公司某年利润是多少、对比、排名、趋势等）\n"
+        "- rag: 问题需要从研究报告/年报文本中检索（如原因分析、政策影响、产品信息、战略规划、行业趋势等）\n"
+        "- hybrid: 问题同时需要财务数据和研报分析（如某指标变化的原因）\n\n"
+        "判断要点：\n"
+        "- 问[是多少][有哪些公司][排名][对比][趋势变化] -> sql\n"
+        "- 问[为什么][原因][影响因素][产品有哪些][政策][战略] -> rag\n"
+        "- 问[某指标变化/增长/下降的原因] -> hybrid（先查数据再分析原因）\n\n"
+        '只返回JSON，如 {"route":"sql"}。\n'
+    )
+
+    _SPLIT_PROMPT = (
+        "你是中药上市公司财报问答系统的问题拆分器。\n\n"
+        "用户的问题可能包含多个子问题，请将其拆成可以独立回答的子问题列表。\n\n"
+        "拆分规则：\n"
+        "- 每个子问题应该能独立用一条SQL或一次检索回答\n"
+        "- 保留必要的上下文（公司名、时间范围等），使每个子问题自包含\n"
+        "- 如果问题问了A，然后问[其中最大/最小的是谁]，要拆成独立子问题\n"
+        "- 如果问题要求对比多个指标或维度，每个指标一个子问题\n\n"
+        "示例：\n"
+        '输入: "2024年利润最高的top10企业是哪些？这些企业的销售额年同比是多少？'
+        '年同比上涨幅度最大的是哪家企业？"\n'
+        '输出: {"questions": ["2024年利润最高的top10企业是哪些", '
+        '"2024年利润最高的top10企业的销售额年同比是多少", '
+        '"2024年利润最高的top10企业中年同比上涨幅度最大的是哪家企业"]}\n\n'
+        '只返回JSON，格式如 {"questions": ["子问题1", "子问题2"]}。'
+        "若无需拆分，返回原问题单元素列表。\n"
+    )
+
     def classify_intent(self, question: str) -> str:
         text = question.strip()
         if self.llm_client:
-            prompt = '请判断问题属于 sql、rag 或 hybrid，只返回JSON，如{"route":"sql"}。\n问题：' + text
+            prompt = self._CLASSIFY_PROMPT + f"问题：{text}"
             try:
                 result = self.llm_client.complete(prompt, json_mode=True)
                 route = str(result.get("route", "")).strip().lower() if isinstance(result, dict) else ""
@@ -65,11 +98,7 @@ class ResearchQAEngine:
     def split_multi_intent(self, question: str, conversation: ConversationManager | None = None) -> list[str]:
         text = question.strip()
         if self.llm_client:
-            prompt = (
-                "请将下面的复合问题拆成按顺序回答的子问题列表，只返回 JSON，格式如"
-                '{"questions": ["子问题1", "子问题2"]}。若无需拆分，返回原问题单元素列表。\n'
-                f"问题：{text}"
-            )
+            prompt = self._SPLIT_PROMPT + f"问题：{text}"
             if conversation and conversation.history:
                 prompt += f"\n上下文：\n{conversation.render()}"
             try:
@@ -126,11 +155,15 @@ class ResearchQAEngine:
             return answer
         deduplicated_lines: list[str] = []
         seen_lines: set[str] = set()
+        prev_blank = False
         for line in answer.split("\n"):
             normalized_line = line.strip()
             if not normalized_line:
-                deduplicated_lines.append(line)
+                if not prev_blank:
+                    deduplicated_lines.append(line)
+                prev_blank = True
                 continue
+            prev_blank = False
             if normalized_line in seen_lines:
                 continue
             seen_lines.add(normalized_line)

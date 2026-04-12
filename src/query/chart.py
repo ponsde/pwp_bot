@@ -10,7 +10,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib import font_manager
 
-from src.query.answer import _format_report_period
+from src.query.answer import _format_report_period, _FIELD_UNITS
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +60,7 @@ def _configure_cjk_font(
 _configure_cjk_font()
 
 
-def pick_chart_columns(row: dict) -> tuple[str | None, object | None, str | None]:
+def pick_chart_columns(row: dict) -> tuple[str | None, object | None, str | None, str | None]:
     """Intelligently select label and value columns from a result row for charting."""
     preferred_label_fields = ["stock_abbr", "report_period"]
     preferred_value_fields = ["yoy_ratio"]
@@ -87,23 +87,29 @@ def pick_chart_columns(row: dict) -> tuple[str | None, object | None, str | None
         label_value = row.get(label_field)
         label = _format_report_period(label_value) if label_field == "report_period" else str(label_value)
     value = row.get(value_field) if value_field else None
-    return label, value, label_field
+    return label, value, label_field, value_field
 
 
-def safe_chart_data(rows: Sequence[dict]) -> list[dict]:
-    """Build chart-friendly data with smart label/value column selection."""
+def safe_chart_data(rows: Sequence[dict]) -> tuple[list[dict], str | None]:
+    """Build chart-friendly data with smart label/value column selection.
+
+    Returns (data, value_field) so callers can pass field context to render_chart.
+    """
     data = []
+    detected_value_field: str | None = None
     for row in rows:
-        label, value, _ = pick_chart_columns(row)
+        label, value, _, value_field = pick_chart_columns(row)
         if value is None:
             continue
         if label is None:
             label = str(len(data) + 1)
+        if detected_value_field is None and value_field:
+            detected_value_field = value_field
         try:
             data.append({"label": label, "value": float(value)})
         except (ValueError, TypeError):
             continue
-    return data
+    return data, detected_value_field
 
 
 def select_chart_type(question: str, rows: Sequence[dict]) -> str:
@@ -120,9 +126,21 @@ def select_chart_type(question: str, rows: Sequence[dict]) -> str:
     return "none"
 
 
-def _detect_unit_scale(values: Sequence[float]) -> tuple[float, str]:
-    """Detect appropriate unit scale based on max absolute value."""
+def _detect_unit_scale(values: Sequence[float], base_unit: str = "") -> tuple[float, str]:
+    """Detect appropriate unit scale based on max absolute value and field's base unit."""
     max_abs = max((abs(v) for v in values), default=0)
+    if base_unit == "万元":
+        # Data is already in 万元; only scale up to 亿元
+        if max_abs >= 1e4:
+            return 1e4, "亿元"
+        return 1.0, "万元"
+    if base_unit == "元":
+        if max_abs >= 1e8:
+            return 1e8, "亿元"
+        if max_abs >= 1e4:
+            return 1e4, "万元"
+        return 1.0, "元"
+    # Unknown or non-monetary unit (e.g. %, ratio)
     if max_abs >= 1e8:
         return 1e8, "亿元"
     if max_abs >= 1e4:
@@ -135,6 +153,7 @@ def render_chart(
     rows: Sequence[dict],
     output_path: str,
     title: str = "",
+    value_field: str | None = None,
 ) -> str | None:
     if chart_type == "none" or not rows:
         return None
@@ -145,7 +164,8 @@ def render_chart(
     labels = [str(row.get("label", idx)) for idx, row in enumerate(rows, start=1)]
     raw_values = [float(row.get("value", 0) or 0) for row in rows]
 
-    divisor, unit_label = _detect_unit_scale(raw_values)
+    base_unit = _FIELD_UNITS.get(value_field or "", "")
+    divisor, unit_label = _detect_unit_scale(raw_values, base_unit)
     values = [v / divisor for v in raw_values]
 
     fig, ax = plt.subplots(figsize=(8, 5))
