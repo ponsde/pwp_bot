@@ -1,4 +1,12 @@
-"""Thin OpenViking adapter used by research RAG modules only."""
+"""Thin OpenViking adapter used by research RAG modules only.
+
+Compatible with OpenViking 0.3.x. Key differences vs 0.2.x:
+- ``add_resource`` now returns ``{"root_uri": ...}`` (no ``uri`` / ``target_uri`` key).
+- ``MatchedContext`` no longer exposes a ``context`` attr; text lives in
+  ``overview`` (detailed) and ``abstract`` (short).
+- Prefer ``client.find`` over ``client.search`` for lightweight semantic
+  retrieval — ``search`` now runs intent analysis and hierarchical planning.
+"""
 from __future__ import annotations
 
 import os
@@ -25,12 +33,17 @@ def init_client(data_path: str | Path | None = None, config_path: str | Path | N
     target_data_path.mkdir(parents=True, exist_ok=True)
     os.environ["OPENVIKING_CONFIG_FILE"] = str(target_config_path)
     try:
-        from openviking import SyncOpenViking
+        # ``OpenViking`` is the preferred public name in 0.3.x; ``SyncOpenViking``
+        # remains for back-compat. Fall back if older installs only expose the latter.
+        try:
+            from openviking import OpenViking as _Client
+        except ImportError:
+            from openviking import SyncOpenViking as _Client
     except ImportError as exc:  # pragma: no cover
         raise OpenVikingAdapterError("OpenViking is not installed.") from exc
 
     try:
-        client = SyncOpenViking(path=str(target_data_path))
+        client = _Client(path=str(target_data_path))
         client.initialize()
         return client
     except Exception as exc:  # pragma: no cover
@@ -45,19 +58,31 @@ def store_resource(client: Any, pdf_path: str | Path) -> str:
         result = client.add_resource(str(path), wait=True, build_index=True)
     except Exception as exc:
         raise OpenVikingAdapterError(f"Failed to store resource {path}: {exc}") from exc
-    uri = result.get("uri") or result.get("target_uri") or str(path)
+    # 0.3.x uses "root_uri"; 0.2.x used "uri"/"target_uri". Try all, fall back to path.
+    uri = (
+        result.get("root_uri")
+        or result.get("uri")
+        or result.get("target_uri")
+        or str(path)
+    )
     return str(uri)
 
 
 def _extract_matched_contexts(raw: Any) -> list[Any]:
-    """Extract MatchedContext items from OV FindResult or fallback to raw."""
-    resources = getattr(raw, "resources", None)
-    if isinstance(resources, list) and resources:
-        return resources
+    """Extract MatchedContext items from FindResult (0.3.x) or legacy shapes."""
+    # 0.3.x FindResult: has memories / resources / skills. Our RAG stores PDFs
+    # as resources; memories/skills are empty. But merge all three to be safe.
+    collected: list[Any] = []
+    for attr in ("resources", "memories", "skills"):
+        bucket = getattr(raw, attr, None)
+        if isinstance(bucket, list):
+            collected.extend(bucket)
+    if collected:
+        return collected
     if isinstance(raw, list):
         return raw
     if isinstance(raw, dict):
-        for key in ("items", "results", "hits", "data"):
+        for key in ("resources", "memories", "skills", "items", "results", "hits", "data"):
             if isinstance(raw.get(key), list):
                 return raw[key]
         return [raw]
@@ -70,11 +95,25 @@ def _normalize_item(item: Any) -> dict[str, Any]:
     """Normalize a single search result item (MatchedContext or dict)."""
     uri = getattr(item, "uri", None)
     if uri is not None:
-        text = getattr(item, "context", None) or getattr(item, "abstract", None) or getattr(item, "overview", None) or ""
+        # 0.3.x: overview is the long form, abstract is short. Prefer overview.
+        # Keep 0.2.x "context" in the fallback chain for older installs.
+        text = (
+            getattr(item, "overview", None)
+            or getattr(item, "abstract", None)
+            or getattr(item, "context", None)
+            or ""
+        )
         score = getattr(item, "score", 0.0)
         return {"text": str(text), "source": str(uri), "score": float(score or 0.0), "raw": item}
     if isinstance(item, dict):
-        text = item.get("text") or item.get("content") or item.get("chunk") or ""
+        text = (
+            item.get("overview")
+            or item.get("abstract")
+            or item.get("text")
+            or item.get("content")
+            or item.get("chunk")
+            or ""
+        )
         source = item.get("source") or item.get("uri") or item.get("path") or ""
         score = item.get("score") or item.get("similarity") or 0.0
         return {"text": str(text), "source": str(source), "score": float(score or 0.0), "raw": item}
@@ -118,13 +157,21 @@ def _chinese_char_ratio(text: str) -> float:
     return chinese_count / len(text)
 
 
-def search(client: Any, query: str, top_k: int = 5) -> list[dict[str, Any]]:
+def search(client: Any, query: str, top_k: int = 5, target_uri: str = "") -> list[dict[str, Any]]:
     if not query.strip():
         return []
+    # Prefer ``find`` (lightweight semantic retrieval) as shown in the 0.3.x
+    # example. Fall back to ``search`` (heavier: intent analysis + hierarchical
+    # planning) if find is unavailable on older installs.
     try:
+        method = getattr(client, "find", None) or client.search
+        raw = method(query, target_uri=target_uri, limit=top_k) if target_uri else method(query, limit=top_k)
+    except TypeError:
+        # Older 0.2.x signature didn't accept target_uri.
         raw = client.search(query, limit=top_k)
     except Exception as exc:
         raise OpenVikingAdapterError(f"OpenViking search failed: {exc}") from exc
+
     items = _extract_matched_contexts(raw)
     candidates: list[dict[str, Any]] = []
     for item in items[:top_k]:
