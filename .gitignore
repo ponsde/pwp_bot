@@ -3,8 +3,18 @@ __pycache__/
 *.pyc
 .env
 
-# Data (large, not in repo)
-data/
+# Data (large, mostly not in repo)
+# Exceptions below: tiny files required for Railway runtime image
+/data/*
+!/data/db
+!/data/sample
+/data/db/*
+!/data/db/finance.db
+/data/sample/*
+!/data/sample/示例数据
+/data/sample/示例数据/*
+!/data/sample/示例数据/附件1*.xlsx
+!/data/sample/示例数据/附件3*.xlsx
 fin_data.db
 datas.7z
 datas_extracted/
