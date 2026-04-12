@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Bot Streaming Test</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: system-ui, -apple-system, sans-serif; max-width: 860px; margin: 16px auto; padding: 0 16px; }
+  h1 { font-size: 18px; margin: 0 0 10px; }
+  fieldset { border: 1px solid #888; border-radius: 4px; padding: 8px 12px; margin-bottom: 10px; }
+  legend { font-size: 12px; padding: 0 4px; opacity: 0.7; }
+  .grid { display: grid; grid-template-columns: 110px 1fr; gap: 6px 10px; align-items: center; }
+  input, textarea { padding: 5px 7px; font: inherit; box-sizing: border-box; }
+  input { width: 100%; }
+  textarea { width: 100%; resize: vertical; min-height: 60px; }
+  button { padding: 6px 14px; font: inherit; cursor: pointer; }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  #log { border: 1px solid #888; border-radius: 4px; padding: 10px; min-height: 300px; max-height: 60vh; overflow-y: auto; font-family: ui-monospace, Menlo, monospace; font-size: 13px; }
+  .row { margin: 4px 0; padding: 6px 8px; border-radius: 4px; white-space: pre-wrap; word-break: break-word; }
+  .user { background: rgba(0,120,212,0.14); }
+  .assistant { background: rgba(0,180,120,0.12); }
+  .reasoning { background: rgba(160,120,220,0.14); font-style: italic; font-size: 12px; }
+  .tool { background: rgba(120,120,120,0.14); font-size: 12px; }
+  .meta { font-size: 11px; opacity: 0.65; }
+  .error { background: rgba(220,60,60,0.2); }
+  .cursor::after { content: '▍'; opacity: 0.5; animation: blink 1s infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+</style>
+</head>
+<body>
+<h1>Bot Streaming Test</h1>
+
+<fieldset>
+  <legend>Config (saved to localStorage)</legend>
+  <div class="grid">
+    <label>Backend URL</label><input id="cfg-backend" placeholder="https://your-backend.up.railway.app" />
+    <label>API Key</label><input id="cfg-apikey" type="password" placeholder="ov-... (OV root key)" />
+    <label>Account</label><input id="cfg-account" placeholder="default" />
+    <label>User</label><input id="cfg-user" placeholder="default" />
+    <label>Session ID</label><input id="cfg-session" placeholder="auto-generated" />
+  </div>
+</fieldset>
+
+<fieldset>
+  <legend>Message</legend>
+  <textarea id="msg" placeholder="输入消息，Cmd/Ctrl+Enter 发送"></textarea>
+  <div style="margin-top:6px; display:flex; gap:8px;">
+    <button id="send">Send</button>
+    <button id="clear">Clear log</button>
+    <button id="reset-session">New session</button>
+  </div>
+</fieldset>
+
+<div id="log"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const log = $('log');
+
+const STORE_KEY = 'bot-test-config';
+function loadCfg() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORE_KEY) || '{}');
+    $('cfg-backend').value = saved.backend || window.location.origin;
+    $('cfg-apikey').value = saved.apikey || '';
+    $('cfg-account').value = saved.account || 'default';
+    $('cfg-user').value = saved.user || 'default';
+    $('cfg-session').value = saved.session || cryptoRandomId();
+  } catch {
+    $('cfg-session').value = cryptoRandomId();
+  }
+}
+function saveCfg() {
+  const cfg = {
+    backend: $('cfg-backend').value.trim().replace(/\/+$/, ''),
+    apikey: $('cfg-apikey').value,
+    account: $('cfg-account').value.trim() || 'default',
+    user: $('cfg-user').value.trim() || 'default',
+    session: $('cfg-session').value.trim(),
+  };
+  localStorage.setItem(STORE_KEY, JSON.stringify(cfg));
+  return cfg;
+}
+function cryptoRandomId() {
+  return 'sess-' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+}
+
+function addRow(cls, text) {
+  const div = document.createElement('div');
+  div.className = 'row ' + cls;
+  div.textContent = text;
+  log.appendChild(div);
+  log.scrollTop = log.scrollHeight;
+  return div;
+}
+
+// Typewriter: queue incoming text, flush one char at a time at ~60 cps.
+// Uses an ever-running interval so each callsite is just `push(text)`.
+function createTypewriter(row, prefix, charsPerSecond = 60) {
+  let buffer = '';
+  let rendered = '';
+  let finished = false;
+  const intervalMs = Math.max(8, Math.round(1000 / charsPerSecond));
+  const timer = setInterval(() => {
+    if (buffer.length === 0) {
+      if (finished) { clearInterval(timer); row.classList.remove('cursor'); }
+      return;
+    }
+    // Take 1 char per tick, but catch up if buffer is getting long so we
+    // never fall behind the stream by more than ~1 second of text.
+    const catchUp = Math.max(1, Math.floor(buffer.length / (charsPerSecond * 1)));
+    const take = buffer.slice(0, catchUp);
+    buffer = buffer.slice(catchUp);
+    rendered += take;
+    row.textContent = prefix + rendered;
+    log.scrollTop = log.scrollHeight;
+  }, intervalMs);
+  return {
+    push(text) { buffer += text; },
+    finish() { finished = true; },
+    get text() { return rendered + buffer; },
+  };
+}
+
+async function send() {
+  const cfg = saveCfg();
+  const message = $('msg').value.trim();
+  if (!message) return;
+  if (!cfg.backend) { addRow('error', 'Backend URL is required'); return; }
+
+  $('send').disabled = true;
+  addRow('user', '👤 ' + message);
+  $('msg').value = '';
+
+  const assistantRow = addRow('assistant cursor', '🤖 ');
+  const assistant = createTypewriter(assistantRow, '🤖 ', 55);
+  let reasoning = null;
+
+  const url = cfg.backend + '/bot/v1/chat/stream';
+  const headers = { 'Content-Type': 'application/json' };
+  if (cfg.apikey) headers['X-API-Key'] = cfg.apikey;
+  if (cfg.account) headers['X-OpenViking-Account'] = cfg.account;
+  if (cfg.user) headers['X-OpenViking-User'] = cfg.user;
+
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        message,
+        session_id: cfg.session,
+        stream: true,
+      }),
+    });
+
+    if (!res.ok) {
+      const txt = await res.text();
+      addRow('error', `HTTP ${res.status}: ${txt.slice(0, 500)}`);
+      assistantRow.classList.remove('cursor');
+      return;
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+    const t0 = performance.now();
+    let firstByteAt = null;
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      if (firstByteAt === null) firstByteAt = performance.now();
+      buf += decoder.decode(value, { stream: true });
+
+      // Split by blank line — SSE event boundary is "\n\n"
+      let idx;
+      while ((idx = buf.indexOf('\n\n')) !== -1) {
+        const rawEvent = buf.slice(0, idx);
+        buf = buf.slice(idx + 2);
+        const dataLines = rawEvent
+          .split('\n')
+          .filter((l) => l.startsWith('data:'))
+          .map((l) => l.slice(5).replace(/^\s/, ''));
+        if (!dataLines.length) continue;
+        const payload = dataLines.join('\n');
+        let evt;
+        try { evt = JSON.parse(payload); } catch { continue; }
+
+        const kind = evt.event;
+        const data = evt.data;
+        if (kind === 'content_delta') {
+          assistant.push(data);
+        } else if (kind === 'reasoning_delta') {
+          if (!reasoning) {
+            const rRow = addRow('reasoning cursor', '💭 ');
+            reasoning = createTypewriter(rRow, '💭 ', 80);
+          }
+          reasoning.push(data);
+        } else if (kind === 'reasoning') {
+          addRow('reasoning', '💭 ' + (typeof data === 'string' ? data : JSON.stringify(data)));
+        } else if (kind === 'tool_call') {
+          addRow('tool', '🔧 ' + (typeof data === 'string' ? data : JSON.stringify(data)));
+        } else if (kind === 'tool_result') {
+          const txt = typeof data === 'string' ? data : JSON.stringify(data);
+          addRow('tool', '📎 ' + (txt.length > 400 ? txt.slice(0, 400) + '…' : txt));
+        } else if (kind === 'response') {
+          // Final content — backfill typewriter if it never got any deltas
+          if (!assistant.text) {
+            assistant.push(typeof data === 'string' ? data : JSON.stringify(data));
+          }
+        } else if (kind === 'iteration') {
+          addRow('meta', 'ℹ ' + (typeof data === 'string' ? data : JSON.stringify(data)));
+        } else if (kind === 'done') {
+          // End-of-stream terminator
+        } else {
+          addRow('meta', `[${kind}] ${typeof data === 'string' ? data : JSON.stringify(data)}`);
+        }
+      }
+    }
+
+    assistant.finish();
+    if (reasoning) reasoning.finish();
+    const ttfb = firstByteAt !== null ? Math.round(firstByteAt - t0) : '?';
+    const total = Math.round(performance.now() - t0);
+    addRow('meta', `⏱ first byte ${ttfb}ms · total ${total}ms`);
+  } catch (err) {
+    addRow('error', 'Fetch failed: ' + err.message);
+    assistant.finish();
+    if (reasoning) reasoning.finish();
+  } finally {
+    $('send').disabled = false;
+  }
+}
+
+$('send').onclick = send;
+$('clear').onclick = () => { log.innerHTML = ''; };
+$('reset-session').onclick = () => {
+  $('cfg-session').value = cryptoRandomId();
+  saveCfg();
+  addRow('meta', 'New session: ' + $('cfg-session').value);
+};
+$('msg').addEventListener('keydown', (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); send(); }
+});
+
+loadCfg();
+</script>
+</body>
+</html>
