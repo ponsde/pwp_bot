@@ -104,6 +104,9 @@ python3 -m pytest tests/test_etl_quality_check.py -v
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
 | `LLM_API_KEY` | (必填) | LLM API 密钥 |
-| `LLM_API_BASE` | `https://oai.whidsm.cn/v1` | API 基础 URL |
-| `LLM_MODEL` | `gpt-5.4` | 模型名称 |
+| `LLM_API_BASE` | (必填) | LLM OpenAI 兼容 API 基础 URL |
+| `LLM_MODEL` | (必填) | LLM 模型名称 |
+| `EMBEDDING_API_KEY` | (可选) | 嵌入服务 API 密钥（与 LLM 独立） |
+| `EMBEDDING_API_BASE` | (可选) | 嵌入服务 API 基础 URL |
+| `EMBEDDING_MODEL` | `BAAI/bge-m3` | 嵌入模型名称 |
 | `SQLITE_DB_PATH` | `data/db/financial_reports.db` | 数据库路径 |

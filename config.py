@@ -18,8 +18,6 @@ RESEARCH_DIR = SAMPLE_DIR / "附件5：研报数据"
 RESEARCH_QUESTIONS_XLSX = SAMPLE_DIR / "附件6：问题汇总.xlsx"
 OV_DATA_DIR = ROOT_DIR / ".openviking"
 OV_CONFIG_PATH = ROOT_DIR / "ov.conf"
-DEFAULT_LLM_API_BASE = "https://oai.whidsm.cn/v1"
-DEFAULT_LLM_MODEL = "gpt-5.4"
 DEFAULT_EMBEDDING_MODEL = "BAAI/bge-m3"
 
 
@@ -28,6 +26,8 @@ class Settings:
     llm_api_key: str
     llm_api_base: str
     llm_model: str
+    embedding_api_key: str
+    embedding_api_base: str
     embedding_model: str
     llm_timeout: int
     sqlite_db_path: Path
@@ -37,8 +37,10 @@ def load_settings(require_llm_api_key: bool = False) -> Settings:
     load_dotenv(ROOT_DIR / ".env")
 
     llm_api_key = os.getenv("LLM_API_KEY", "").strip()
-    llm_api_base = os.getenv("LLM_API_BASE", DEFAULT_LLM_API_BASE).strip()
-    llm_model = os.getenv("LLM_MODEL", DEFAULT_LLM_MODEL).strip()
+    llm_api_base = os.getenv("LLM_API_BASE", "").strip()
+    llm_model = os.getenv("LLM_MODEL", "").strip()
+    embedding_api_key = os.getenv("EMBEDDING_API_KEY", "").strip()
+    embedding_api_base = os.getenv("EMBEDDING_API_BASE", "").strip()
     embedding_model = os.getenv("EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL).strip()
     llm_timeout = int(os.getenv("LLM_TIMEOUT", "60"))
     sqlite_db_path = Path(os.getenv("SQLITE_DB_PATH", str(DEFAULT_DB_PATH)))
@@ -48,9 +50,9 @@ def load_settings(require_llm_api_key: bool = False) -> Settings:
     if require_llm_api_key and not llm_api_key:
         raise RuntimeError("Missing LLM_API_KEY. Copy .env.example to .env and fill it.")
     if not llm_api_base:
-        raise RuntimeError("Missing LLM_API_BASE.")
+        raise RuntimeError("Missing LLM_API_BASE. Set it in your environment.")
     if not llm_model:
-        raise RuntimeError("Missing LLM_MODEL.")
+        raise RuntimeError("Missing LLM_MODEL. Set it in your environment.")
     if not embedding_model:
         raise RuntimeError("Missing EMBEDDING_MODEL.")
 
@@ -65,6 +67,8 @@ def load_settings(require_llm_api_key: bool = False) -> Settings:
         llm_api_key=llm_api_key,
         llm_api_base=llm_api_base,
         llm_model=llm_model,
+        embedding_api_key=embedding_api_key,
+        embedding_api_base=embedding_api_base,
         embedding_model=embedding_model,
         llm_timeout=llm_timeout,
         sqlite_db_path=sqlite_db_path,

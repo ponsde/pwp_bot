@@ -11,7 +11,7 @@
 
 ## 技术栈
 
-- Python 3.10+, LLM: gpt-5.4 via oai.whidsm.cn/v1, Embedding: BAAI/bge-m3
+- Python 3.10+, LLM: OpenAI-compatible API (configured via env vars), Embedding: BAAI/bge-m3 (independent endpoint)
 - 数据库: SQLite（Schema 对齐官方附件3 的 4 张表）
 - PDF 解析: pdfplumber, 图表: matplotlib, UI: Gradio
 - 创新点(P2): OpenViking 上下文记忆

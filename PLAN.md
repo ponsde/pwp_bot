@@ -6,8 +6,8 @@
 - **截止**: 2026-04-24 提交作品；2026-04-25 09:00-15:00 测试新数据（6小时）
 - **起始**: 2026-03-22
 - **可用时间**: ~33 天（实际投入约 50%）
-- **LLM API**: gpt-5.4 via oai.whidsm.cn
-- **Embedding**: BAAI/bge-m3 via siliconflow
+- **LLM API**: OpenAI 兼容协议（endpoint 和 model 通过环境变量配置）
+- **Embedding**: BAAI/bge-m3（独立 endpoint，via 环境变量）
 - **创新点**: OpenViking 上下文记忆系统
 - **行业**: 中药上市公司（示例数据：华润三九、金花股份）
 
