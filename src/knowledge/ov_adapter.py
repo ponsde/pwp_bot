@@ -38,11 +38,18 @@ def _synthesize_config_from_env() -> dict[str, Any]:
     embedding_base = _env("OV_EMBEDDING_API_BASE")
     embedding_key = _env("OV_EMBEDDING_API_KEY")
     embedding_model = _env("OV_EMBEDDING_MODEL")
-    if not embedding_base or not embedding_key or not embedding_model:
+    embedding_dim_raw = _env("OV_EMBEDDING_DIMENSION")
+    if not all([embedding_base, embedding_key, embedding_model, embedding_dim_raw]):
         raise OpenVikingAdapterError(
-            "ov.conf missing and OV_EMBEDDING_API_{BASE,KEY,MODEL} not all set; "
-            "cannot bootstrap OpenViking config from env."
+            "ov.conf missing and OV_EMBEDDING_API_{BASE,KEY,MODEL,DIMENSION} "
+            "not all set; cannot bootstrap OpenViking config from env."
         )
+    try:
+        embedding_dim = int(embedding_dim_raw)
+    except ValueError as exc:
+        raise OpenVikingAdapterError(
+            f"OV_EMBEDDING_DIMENSION must be an integer, got {embedding_dim_raw!r}"
+        ) from exc
     # Embedded mode (binding-client) is the default — no port binding,
     # everything runs in-process via OV's Rust/Go binding lib. Only network
     # traffic is outbound HTTPS to the embedding/VLM endpoints above.
@@ -52,7 +59,7 @@ def _synthesize_config_from_env() -> dict[str, Any]:
                 "api_base": embedding_base,
                 "api_key": embedding_key,
                 "provider": "openai",
-                "dimension": int(_env("OV_EMBEDDING_DIMENSION", "1024")),
+                "dimension": embedding_dim,
                 "model": embedding_model,
             }
         },

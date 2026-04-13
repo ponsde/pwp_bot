@@ -124,7 +124,7 @@ python3 -m pytest tests/test_etl_quality_check.py -v
 | `OV_EMBEDDING_API_KEY` | (RAG 必填) | OV embedding 服务密钥 |
 | `OV_EMBEDDING_API_BASE` | (RAG 必填) | OV embedding 基础 URL |
 | `OV_EMBEDDING_MODEL` | (RAG 必填) | OV embedding 模型名 |
-| `OV_EMBEDDING_DIMENSION` | `1024` | OV embedding 维度 |
+| `OV_EMBEDDING_DIMENSION` | (RAG 必填) | OV embedding 维度，必须与模型一致（如 bge-m3=1024） |
 | `OV_VLM_API_KEY` | (摘要必填) | OV VLM 密钥（生成 L0/L1 摘要 + 图像解析，需识图能力） |
 | `OV_VLM_API_BASE` | (摘要必填) | OV VLM 基础 URL |
 | `OV_VLM_MODEL` | (摘要必填) | OV VLM 模型名（如 gpt-4o / claude-3.5-sonnet） |
