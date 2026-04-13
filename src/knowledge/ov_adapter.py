@@ -32,11 +32,9 @@ def _synthesize_config_from_env() -> dict[str, Any]:
     confused with the assistant's own LLM/embedding/VLM:
 
     - ``OV_EMBEDDING_API_{KEY,BASE,MODEL}`` — required for OV retrieval.
-    - ``OV_LLM_API_{KEY,BASE,MODEL}``      — required for L0/L1 summary
-      generation (overview / abstract). In OV 0.3.x the config schema calls
-      this block ``vlm`` because the same model serves text + vision, but
-      functionally it's an LLM. ``OV_VLM_*`` is accepted as a backward-compat
-      alias."""
+    - ``OV_VLM_API_{KEY,BASE,MODEL}``      — required for L0/L1 summary
+      generation AND image / scanned-PDF parsing. Must be vision-capable;
+      a text-only LLM will fail on OV's image_summary pipeline."""
     embedding_base = _env("OV_EMBEDDING_API_BASE")
     embedding_key = _env("OV_EMBEDDING_API_KEY")
     embedding_model = _env("OV_EMBEDDING_MODEL")
@@ -57,16 +55,15 @@ def _synthesize_config_from_env() -> dict[str, Any]:
             }
         },
     }
-    # OV's LLM (also serves as VLM). Prefer OV_LLM_* but accept OV_VLM_* alias.
-    llm_base = _env("OV_LLM_API_BASE") or _env("OV_VLM_API_BASE")
-    llm_model = _env("OV_LLM_MODEL") or _env("OV_VLM_MODEL")
-    llm_key = _env("OV_LLM_API_KEY") or _env("OV_VLM_API_KEY")
-    if llm_base and llm_model and llm_key:
+    vlm_base = _env("OV_VLM_API_BASE")
+    vlm_model = _env("OV_VLM_MODEL")
+    vlm_key = _env("OV_VLM_API_KEY")
+    if vlm_base and vlm_model and vlm_key:
         conf["vlm"] = {
-            "api_base": llm_base,
-            "api_key": llm_key,
+            "api_base": vlm_base,
+            "api_key": vlm_key,
             "provider": "openai",
-            "model": llm_model,
+            "model": vlm_model,
         }
     return conf
 
