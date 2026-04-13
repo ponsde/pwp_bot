@@ -8,9 +8,14 @@ The `web-studio/` directory is vendored from
 
 - `src/routes/sessions/route.tsx` — replaced their placeholder with AskPage.
 - `index.html` — `<title>` set to "财报智能问数".
-- `src/components/app-shell.tsx` — removed the SidebarFooter Connection
-  button + its imports. Embedded OV is same-origin, the baseUrl dialog
-  is irrelevant. Search for `taidi-overlay:` comments to spot our hunks.
+- `src/components/app-shell.tsx` — swapped upstream's SidebarFooter
+  Connection button for our own "设置" button that opens
+  `TaidiSettingsDialog`. The embedded OV doesn't need a remote baseUrl
+  editor but users still want to live-edit LLM / OV VLM credentials.
+  Search for `taidi-overlay:` comments to spot our hunks.
+
+New overlay files we own (zero upstream collision):
+- `src/components/taidi-settings-dialog.tsx` — runtime settings editor.
 
 All other additions live under paths upstream leaves as `.gitkeep`:
 `src/routes/sessions/-components/`, `-hooks/`, `-lib/`, etc.

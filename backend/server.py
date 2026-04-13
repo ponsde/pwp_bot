@@ -18,11 +18,17 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Union
 
+from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+
+# Load .env up-front so /api/settings' mask readout and get_engine() both
+# see the same environment. No-op on Railway where env vars already live
+# in the OS environment.
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 from src.query.answer import build_answer_content
 from src.query.chart import render_chart, safe_chart_data, select_chart_type
@@ -65,6 +71,32 @@ class AskResponse(BaseModel):
     references: list[Reference] = Field(default_factory=list)
     needs_clarification: bool = False
     error: str | None = None
+
+
+def _mask_key(value: str) -> str:
+    """Mask all but the last 4 chars of a secret."""
+    if not value:
+        return ""
+    if len(value) <= 8:
+        return "*" * len(value)
+    return f"{value[:4]}{'*' * (len(value) - 8)}{value[-4:]}"
+
+
+class _LLMSettings(BaseModel):
+    api_base: str | None = None
+    api_key: str | None = None
+    model: str | None = None
+
+
+class _VLMSettings(BaseModel):
+    api_base: str | None = None
+    api_key: str | None = None
+    model: str | None = None
+
+
+class SettingsUpdate(BaseModel):
+    llm: _LLMSettings | None = None
+    ov_vlm: _VLMSettings | None = None
 
 
 class AddResourceRequest(BaseModel):
@@ -457,6 +489,64 @@ def create_app() -> FastAPI:
         except Exception as exc:  # noqa: BLE001
             raise HTTPException(status_code=500, detail=str(exc)) from exc
         return _ov_ok({"content": content, "offset": offset, "limit": limit})
+
+    @app.get("/api/settings")
+    def get_settings() -> dict[str, Any]:
+        """Snapshot of live-editable settings with secrets masked."""
+        return {
+            "llm": {
+                "api_base": os.environ.get("LLM_API_BASE", ""),
+                "api_key_masked": _mask_key(os.environ.get("LLM_API_KEY", "")),
+                "model": os.environ.get("LLM_MODEL", ""),
+            },
+            "ov_vlm": {
+                "api_base": os.environ.get("OV_VLM_API_BASE", ""),
+                "api_key_masked": _mask_key(os.environ.get("OV_VLM_API_KEY", "")),
+                "model": os.environ.get("OV_VLM_MODEL", ""),
+            },
+            "ov_embedding": {
+                "api_base": os.environ.get("OV_EMBEDDING_API_BASE", ""),
+                "api_key_masked": _mask_key(os.environ.get("OV_EMBEDDING_API_KEY", "")),
+                "model": os.environ.get("OV_EMBEDDING_MODEL", ""),
+                "dimension": int(os.environ.get("OV_EMBEDDING_DIMENSION", "0") or "0"),
+            },
+        }
+
+    @app.post("/api/settings")
+    def update_settings(req: SettingsUpdate) -> dict[str, Any]:
+        """Apply LLM / OV_VLM edits to the process env and reset the
+        singleton engine so the next /api/ask rebuilds it with the new
+        values. Embedding is intentionally not editable — changing it
+        invalidates the existing vector index."""
+        changed: list[str] = []
+
+        if req.llm:
+            if req.llm.api_base is not None:
+                os.environ["LLM_API_BASE"] = req.llm.api_base
+                changed.append("LLM_API_BASE")
+            if req.llm.api_key:
+                os.environ["LLM_API_KEY"] = req.llm.api_key
+                changed.append("LLM_API_KEY")
+            if req.llm.model is not None:
+                os.environ["LLM_MODEL"] = req.llm.model
+                changed.append("LLM_MODEL")
+
+        if req.ov_vlm:
+            if req.ov_vlm.api_base is not None:
+                os.environ["OV_VLM_API_BASE"] = req.ov_vlm.api_base
+                changed.append("OV_VLM_API_BASE")
+            if req.ov_vlm.api_key:
+                os.environ["OV_VLM_API_KEY"] = req.ov_vlm.api_key
+                changed.append("OV_VLM_API_KEY")
+            if req.ov_vlm.model is not None:
+                os.environ["OV_VLM_MODEL"] = req.ov_vlm.model
+                changed.append("OV_VLM_MODEL")
+
+        # Force next get_engine() to rebuild with the new env.
+        global _engine
+        _engine = None
+
+        return {"status": "ok", "changed": changed}
 
     @app.get("/api/v1/system/status")
     def system_status() -> dict[str, Any]:

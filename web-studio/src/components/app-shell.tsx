@@ -8,6 +8,7 @@ import {
   HardDriveIcon,
   HomeIcon,
   LanguagesIcon,
+  SettingsIcon,
   UploadIcon,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -28,6 +29,7 @@ import { ScrollArea } from '#/components/ui/scroll-area'
 import {
   Sidebar,
   SidebarContent,
+  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
@@ -45,6 +47,9 @@ import {
 import { AppConnectionProvider, useAppConnection } from '#/hooks/use-app-connection'
 import { ResourceUploadProvider } from '#/hooks/use-resource-upload'
 import { describeServerMode } from '#/hooks/use-server-mode'
+// taidi-overlay: our own runtime-settings dialog replacing the upstream
+// baseUrl/apiKey connection editor.
+import { TaidiSettingsDialog } from '#/components/taidi-settings-dialog'
 
 type NavItem = {
   icon: React.ComponentType
@@ -197,6 +202,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
   const { i18n, t } = useTranslation(['appShell', 'common'])
   const pathname = useRouterState({ select: (state) => state.location.pathname })
   const { serverMode } = useAppConnection()
+  const [settingsOpen, setSettingsOpen] = React.useState(false)
   const currentItem = ALL_NAV_ITEMS.find((item) => pathname === item.to || pathname.startsWith(`${item.to}/`))
   const serverModeBadge = describeServerMode(serverMode)
   const currentLanguage = resolveLanguage(i18n.resolvedLanguage ?? i18n.language)
@@ -295,9 +301,23 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
             </SidebarGroup>
           </SidebarContent>
 
-          {/* taidi-overlay: embedded OV runs in-process, same-origin; the
-              Connection footer + ConnectionDialog let users override a
-              remote OV server URL and are irrelevant here. */}
+          {/* taidi-overlay: replaced upstream's remote-OV Connection footer
+              with our live-settings trigger. Embedded OV doesn't need a
+              server URL, but users still want a place to peek/edit LLM +
+              OV_VLM credentials without redeploying Railway. */}
+          <SidebarFooter>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  onClick={() => setSettingsOpen(true)}
+                  tooltip='设置'
+                >
+                  <SettingsIcon />
+                  <span>设置</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarFooter>
           <SidebarRail />
         </Sidebar>
 
@@ -311,6 +331,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
       </div>
 
       <ConnectionDialog />
+      <TaidiSettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
     </SidebarProvider>
   )
 }
