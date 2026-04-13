@@ -360,6 +360,140 @@ def create_app() -> FastAPI:
             },
         }
 
+    # ---------------------------------------------------------------- OV fs probes
+    # Minimal read-only OV HTTP surface so the vendored SPA's Resources
+    # browser and Home dashboard have something to render. All endpoints
+    # proxy into the same embedded SyncOpenViking instance held by the
+    # engine — no separate OV server is spawned.
+
+    def _require_ov() -> Any:
+        client = getattr(get_engine(), "client", None)
+        if client is None:
+            raise HTTPException(status_code=503, detail="OpenViking client unavailable")
+        return client
+
+    def _ov_ok(result: Any) -> dict[str, Any]:
+        return {"status": "ok", "result": result}
+
+    def _ov_error(code: str, message: str, status_code: int = 500) -> dict[str, Any]:
+        return {
+            "status": "error",
+            "error": {"code": code, "message": message},
+        }, status_code
+
+    @app.get("/api/v1/fs/ls")
+    def fs_ls(
+        uri: str,
+        output: str = "original",
+        show_all_hidden: bool = False,
+        node_limit: int | None = None,
+        limit: int | None = None,
+        abs_limit: int = 256,
+        recursive: bool = False,
+        simple: bool = False,
+    ) -> dict[str, Any]:
+        client = _require_ov()
+        kwargs = {
+            "output": output,
+            "show_all_hidden": show_all_hidden,
+            "abs_limit": abs_limit,
+            "recursive": recursive,
+            "simple": simple,
+        }
+        if node_limit is not None:
+            kwargs["node_limit"] = node_limit
+        if limit is not None:
+            kwargs["limit"] = limit
+        try:
+            result = client.ls(uri, **kwargs)
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("fs.ls failed for uri=%s", uri)
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+        return _ov_ok(result)
+
+    @app.get("/api/v1/fs/tree")
+    def fs_tree(
+        uri: str,
+        output: str = "original",
+        show_all_hidden: bool = False,
+        node_limit: int = 1000,
+        abs_limit: int = 128,
+        level_limit: int | None = None,
+    ) -> dict[str, Any]:
+        client = _require_ov()
+        kwargs = {
+            "output": output,
+            "show_all_hidden": show_all_hidden,
+            "node_limit": node_limit,
+            "abs_limit": abs_limit,
+        }
+        if level_limit is not None:
+            kwargs["level_limit"] = level_limit
+        try:
+            result = client.tree(uri, **kwargs)
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("fs.tree failed for uri=%s", uri)
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+        return _ov_ok(result)
+
+    @app.get("/api/v1/fs/stat")
+    def fs_stat(uri: str) -> dict[str, Any]:
+        client = _require_ov()
+        try:
+            result = client.stat(uri)
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+        return _ov_ok(result)
+
+    @app.get("/api/v1/content/read")
+    def content_read(uri: str, offset: int = 0, limit: int = -1) -> dict[str, Any]:
+        client = _require_ov()
+        try:
+            content = client.read(uri, offset=offset, limit=limit)
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+        return _ov_ok({"content": content, "offset": offset, "limit": limit})
+
+    @app.get("/api/v1/system/status")
+    def system_status() -> dict[str, Any]:
+        """Satisfies the vendored Home dashboard's /api/v1/system/status call.
+
+        Returns whatever OV's ``get_status`` emits, plus our own fields
+        (db stats + rag_enabled) so the Home page can show something
+        taidi-specific."""
+        client = _require_ov()
+        try:
+            ov_status = client.get_status()
+            if hasattr(ov_status, "model_dump"):
+                ov_status = ov_status.model_dump()
+            elif hasattr(ov_status, "__dict__"):
+                ov_status = dict(ov_status.__dict__)
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("system.status failed")
+            ov_status = {"error": str(exc)}
+
+        try:
+            with sqlite3.connect(DB_PATH) as conn:
+                db_stats = conn.execute(
+                    "SELECT COUNT(DISTINCT stock_code), COUNT(DISTINCT report_period), MAX(report_period) "
+                    "FROM core_performance_indicators_sheet"
+                ).fetchone()
+            companies, periods, latest = db_stats or (0, 0, None)
+        except Exception:  # noqa: BLE001
+            companies, periods, latest = 0, 0, None
+
+        return _ov_ok({
+            "ov": ov_status,
+            "taidi": {
+                "company_count": companies or 0,
+                "report_period_count": periods or 0,
+                "latest_period": latest,
+                "db_path": DB_PATH,
+                "rag_enabled": True,
+            },
+            "user_id": "embedded",
+        })
+
     CHART_DIR.mkdir(parents=True, exist_ok=True)
     app.mount("/charts", StaticFiles(directory=str(CHART_DIR)), name="charts")
 
