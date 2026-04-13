@@ -4,6 +4,17 @@ The `web-studio/` directory is vendored from
 [Ferry-200/OpenViking](https://github.com/Ferry-200/OpenViking), branch
 `new-frontend`, as the base of our frontend.
 
+## Files we modified from upstream (check on each pull)
+
+- `src/routes/sessions/route.tsx` — replaced their placeholder with AskPage.
+- `index.html` — `<title>` set to "财报智能问数".
+- `src/components/app-shell.tsx` — removed the SidebarFooter Connection
+  button + its imports. Embedded OV is same-origin, the baseUrl dialog
+  is irrelevant. Search for `taidi-overlay:` comments to spot our hunks.
+
+All other additions live under paths upstream leaves as `.gitkeep`:
+`src/routes/sessions/-components/`, `-hooks/`, `-lib/`, etc.
+
 - Upstream snapshot commit: see `.upstream-commit`
 - License: `LICENSE.upstream` (upstream's license, vendored alongside)
 

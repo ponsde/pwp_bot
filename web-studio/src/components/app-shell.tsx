@@ -8,7 +8,6 @@ import {
   HardDriveIcon,
   HomeIcon,
   LanguagesIcon,
-  PlugZapIcon,
   UploadIcon,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -29,7 +28,6 @@ import { ScrollArea } from '#/components/ui/scroll-area'
 import {
   Sidebar,
   SidebarContent,
-  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
@@ -198,7 +196,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 function AppShellInner({ children }: { children: React.ReactNode }) {
   const { i18n, t } = useTranslation(['appShell', 'common'])
   const pathname = useRouterState({ select: (state) => state.location.pathname })
-  const { openConnectionDialog, serverMode } = useAppConnection()
+  const { serverMode } = useAppConnection()
   const currentItem = ALL_NAV_ITEMS.find((item) => pathname === item.to || pathname.startsWith(`${item.to}/`))
   const serverModeBadge = describeServerMode(serverMode)
   const currentLanguage = resolveLanguage(i18n.resolvedLanguage ?? i18n.language)
@@ -297,16 +295,9 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
             </SidebarGroup>
           </SidebarContent>
 
-          <SidebarFooter>
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton onClick={openConnectionDialog} tooltip={t('footer.connection', { ns: 'appShell' })}>
-                  <PlugZapIcon />
-                  <span>{t('footer.connection', { ns: 'appShell' })}</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            </SidebarMenu>
-          </SidebarFooter>
+          {/* taidi-overlay: embedded OV runs in-process, same-origin; the
+              Connection footer + ConnectionDialog let users override a
+              remote OV server URL and are irrelevant here. */}
           <SidebarRail />
         </Sidebar>
 
