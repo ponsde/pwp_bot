@@ -1,24 +1,22 @@
-// taidi-overlay: runtime settings dialog for live-editing LLM + OV_VLM
-// credentials. Replaces the upstream ConnectionDialog (which asked for a
-// remote OV server baseUrl — irrelevant for our embedded deploy).
+// taidi-overlay: runtime settings drawer for live-editing LLM + OV_VLM
+// credentials. Slides in from the right so the panel is short vertically
+// and wide horizontally, with LLM / OV_VLM laid out side-by-side.
 //
 // OV_EMBEDDING_* is shown read-only: swapping the embedding model
-// invalidates the existing vector index, so we refuse to edit it via
-// this path.
+// invalidates the existing vector index, so we refuse to edit it here.
 import * as React from 'react'
+import { toast } from 'sonner'
 
 import { Button } from '#/components/ui/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '#/components/ui/dialog'
-import { Field, FieldContent, FieldGroup, FieldLabel, FieldSet } from '#/components/ui/field'
 import { Input } from '#/components/ui/input'
-import { toast } from 'sonner'
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from '#/components/ui/sheet'
 
 const ENV_BASE_URL =
   typeof import.meta.env.VITE_API_BASE_URL === 'string'
@@ -38,6 +36,21 @@ type SettingsSnapshot = {
 type UpdatablePayload = {
   llm?: { api_base?: string; api_key?: string; model?: string }
   ov_vlm?: { api_base?: string; api_key?: string; model?: string }
+}
+
+function Labeled({
+  label,
+  children,
+}: {
+  label: string
+  children: React.ReactNode
+}) {
+  return (
+    <label className='flex flex-col gap-1 text-sm'>
+      <span className='text-xs font-medium text-muted-foreground'>{label}</span>
+      {children}
+    </label>
+  )
 }
 
 export function TaidiSettingsDialog({
@@ -61,6 +74,7 @@ export function TaidiSettingsDialog({
   React.useEffect(() => {
     if (!open) return
     setLoadError(null)
+    setSnapshot(null)
     void (async () => {
       try {
         const res = await fetch(apiUrl('/api/settings'))
@@ -113,101 +127,96 @@ export function TaidiSettingsDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className='max-w-xl'>
-        <DialogHeader>
-          <DialogTitle>运行时设置</DialogTitle>
-          <DialogDescription>
-            在线修改 LLM / OV VLM 凭据。embedding 不可改（会使已有向量索引失效）。
-            空的 API Key 字段表示"保持现有不变"。
-          </DialogDescription>
-        </DialogHeader>
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent
+        side='right'
+        className='flex w-full max-w-[var(--settings-sheet-width)] flex-col gap-4 sm:max-w-[var(--settings-sheet-width)]'
+        style={{ '--settings-sheet-width': 'min(780px, 90vw)' } as React.CSSProperties}
+      >
+        <SheetHeader>
+          <SheetTitle>运行时设置</SheetTitle>
+          <SheetDescription>
+            在线修改 LLM / OV VLM 凭据，保存后下一次请求自动生效。Embedding 不可改
+            （改了会使已有的向量索引失效）。留空 API Key 表示"保持现有值不变"。
+          </SheetDescription>
+        </SheetHeader>
 
-        {loadError ? (
-          <div className='rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive'>
-            加载失败：{loadError}
-          </div>
-        ) : !snapshot ? (
-          <div className='text-sm text-muted-foreground'>加载中…</div>
-        ) : (
-          <FieldSet className='space-y-4'>
-            <FieldGroup>
-              <div className='text-sm font-medium'>助手 LLM</div>
-              <Field>
-                <FieldLabel>API Base</FieldLabel>
-                <FieldContent>
-                  <Input value={llmBase} onChange={(e) => setLlmBase(e.target.value)} />
-                </FieldContent>
-              </Field>
-              <Field>
-                <FieldLabel>Model</FieldLabel>
-                <FieldContent>
-                  <Input value={llmModel} onChange={(e) => setLlmModel(e.target.value)} />
-                </FieldContent>
-              </Field>
-              <Field>
-                <FieldLabel>API Key</FieldLabel>
-                <FieldContent>
-                  <Input
-                    type='password'
-                    placeholder={snapshot.llm.api_key_masked || '未配置'}
-                    value={llmKey}
-                    onChange={(e) => setLlmKey(e.target.value)}
-                  />
-                </FieldContent>
-              </Field>
-            </FieldGroup>
+        <div className='flex-1 overflow-y-auto px-4'>
+          {loadError ? (
+            <div className='rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive'>
+              加载失败：{loadError}
+            </div>
+          ) : !snapshot ? (
+            <div className='text-sm text-muted-foreground'>加载中…</div>
+          ) : (
+            <div className='space-y-6'>
+              <div className='grid gap-4 md:grid-cols-2'>
+                <section className='rounded-lg border bg-card/50 p-4'>
+                  <div className='mb-3 text-sm font-medium'>助手 LLM</div>
+                  <div className='space-y-3'>
+                    <Labeled label='API Base'>
+                      <Input value={llmBase} onChange={(e) => setLlmBase(e.target.value)} />
+                    </Labeled>
+                    <Labeled label='Model'>
+                      <Input value={llmModel} onChange={(e) => setLlmModel(e.target.value)} />
+                    </Labeled>
+                    <Labeled label='API Key'>
+                      <Input
+                        type='password'
+                        placeholder={snapshot.llm.api_key_masked || '未配置'}
+                        value={llmKey}
+                        onChange={(e) => setLlmKey(e.target.value)}
+                      />
+                    </Labeled>
+                  </div>
+                </section>
 
-            <FieldGroup>
-              <div className='text-sm font-medium'>OpenViking VLM</div>
-              <Field>
-                <FieldLabel>API Base</FieldLabel>
-                <FieldContent>
-                  <Input value={vlmBase} onChange={(e) => setVlmBase(e.target.value)} />
-                </FieldContent>
-              </Field>
-              <Field>
-                <FieldLabel>Model</FieldLabel>
-                <FieldContent>
-                  <Input value={vlmModel} onChange={(e) => setVlmModel(e.target.value)} />
-                </FieldContent>
-              </Field>
-              <Field>
-                <FieldLabel>API Key</FieldLabel>
-                <FieldContent>
-                  <Input
-                    type='password'
-                    placeholder={snapshot.ov_vlm.api_key_masked || '未配置'}
-                    value={vlmKey}
-                    onChange={(e) => setVlmKey(e.target.value)}
-                  />
-                </FieldContent>
-              </Field>
-            </FieldGroup>
-
-            <FieldGroup>
-              <div className='text-sm font-medium text-muted-foreground'>
-                OpenViking Embedding（只读）
+                <section className='rounded-lg border bg-card/50 p-4'>
+                  <div className='mb-3 text-sm font-medium'>OpenViking VLM</div>
+                  <div className='space-y-3'>
+                    <Labeled label='API Base'>
+                      <Input value={vlmBase} onChange={(e) => setVlmBase(e.target.value)} />
+                    </Labeled>
+                    <Labeled label='Model'>
+                      <Input value={vlmModel} onChange={(e) => setVlmModel(e.target.value)} />
+                    </Labeled>
+                    <Labeled label='API Key'>
+                      <Input
+                        type='password'
+                        placeholder={snapshot.ov_vlm.api_key_masked || '未配置'}
+                        value={vlmKey}
+                        onChange={(e) => setVlmKey(e.target.value)}
+                      />
+                    </Labeled>
+                  </div>
+                </section>
               </div>
-              <div className='text-xs text-muted-foreground'>
-                Model: {snapshot.ov_embedding.model || '未配置'} · Dim:{' '}
-                {snapshot.ov_embedding.dimension || '—'}
-                <br />
-                API Base: {snapshot.ov_embedding.api_base || '—'}
-              </div>
-            </FieldGroup>
-          </FieldSet>
-        )}
 
-        <DialogFooter>
+              <section className='rounded-lg border border-dashed bg-muted/30 px-4 py-3 text-xs text-muted-foreground'>
+                <div className='mb-1 font-medium text-foreground/80'>
+                  OpenViking Embedding（只读，改动会使向量索引失效）
+                </div>
+                <div className='grid gap-x-4 gap-y-1 sm:grid-cols-2'>
+                  <span>Model: {snapshot.ov_embedding.model || '未配置'}</span>
+                  <span>Dim: {snapshot.ov_embedding.dimension || '—'}</span>
+                  <span className='sm:col-span-2'>
+                    API Base: {snapshot.ov_embedding.api_base || '—'}
+                  </span>
+                </div>
+              </section>
+            </div>
+          )}
+        </div>
+
+        <SheetFooter className='flex-row justify-end gap-2'>
           <Button variant='outline' onClick={() => onOpenChange(false)} disabled={saving}>
             取消
           </Button>
           <Button onClick={() => void onSave()} disabled={!snapshot || saving}>
             {saving ? '保存中…' : '保存'}
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
   )
 }
