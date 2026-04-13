@@ -64,6 +64,28 @@ class LLMClient:
             raise last_error
         raise RuntimeError("chat_completion failed without exception")
 
+    def stream_chat_completion(
+        self,
+        messages: list[dict[str, str]],
+        temperature: float = 0.0,
+        **kwargs: Any,
+    ):
+        """Yield text deltas from a streaming chat completion.
+
+        Generator of str pieces. Caller is responsible for retry/error
+        handling — streaming doesn't retry automatically."""
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=messages,
+            temperature=temperature,
+            stream=True,
+            **kwargs,
+        )
+        for chunk in response:
+            delta = (chunk.choices[0].delta.content if chunk.choices else "") or ""
+            if delta:
+                yield delta
+
     def smoke_test(self) -> bool:
         result = self.chat_completion(messages=[{"role": "user", "content": "reply with pong"}], temperature=0.0)
         return isinstance(result, str) and "pong" in result.lower()

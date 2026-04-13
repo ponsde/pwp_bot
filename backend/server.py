@@ -21,7 +21,7 @@ from typing import Any, Union
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -299,6 +299,53 @@ def create_app() -> FastAPI:
         if _is_research_engine(engine):
             return _answer_with_research(engine, req, session_id, session)
         return _answer_with_text2sql(engine, req, session_id, session)
+
+    @app.post("/api/ask/stream")
+    def ask_stream(req: AskRequest) -> StreamingResponse:
+        """SSE variant of /api/ask — emits status events at each stage so
+        the frontend can show 'analyzing → querying → rendering chart'
+        progress, plus the final full response in a ``done`` event."""
+        import json as _json
+
+        def _event(event_type: str, data: dict[str, Any]) -> str:
+            return f"event: {event_type}\ndata: {_json.dumps(data, ensure_ascii=False)}\n\n"
+
+        session_id, session = _get_or_create_session(req.session_id)
+
+        def generate():
+            try:
+                session.conversation.add_user_message(req.question)
+                yield _event("status", {"stage": "analyzing", "message": "正在理解问题…"})
+
+                engine = get_engine()
+                if _is_research_engine(engine):
+                    route = engine.classify_intent(req.question)
+                    yield _event("status", {"stage": "routed", "route": route, "message": f"路由：{route}"})
+
+                    yield _event("status", {"stage": "querying", "message": "执行查询…"})
+                    response = _answer_with_research(engine, req, session_id, session)
+                else:
+                    yield _event("status", {"stage": "querying", "message": "生成 SQL 并查询数据库…"})
+                    response = _answer_with_text2sql(engine, req, session_id, session)
+
+                if response.sql:
+                    yield _event("sql", {"sql": response.sql})
+                if response.chart_url:
+                    yield _event("status", {"stage": "rendering", "message": "渲染图表…"})
+
+                yield _event("done", response.model_dump())
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("ask_stream failed")
+                yield _event("error", {"message": str(exc)})
+
+        return StreamingResponse(
+            generate(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",  # disable nginx/proxy buffering
+            },
+        )
 
     @app.post("/api/v1/resources/temp_upload")
     async def resources_temp_upload(

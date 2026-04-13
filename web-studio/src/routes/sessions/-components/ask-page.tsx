@@ -9,7 +9,7 @@ import 'highlight.js/styles/github-dark.css'
 import { Button } from '#/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '#/components/ui/card'
 import { Textarea } from '#/components/ui/textarea'
-import { postAsk, resolveChartUrl } from '../-lib/api'
+import { resolveChartUrl, streamAsk } from '../-lib/api'
 import type { AskResponse } from '../-lib/api'
 
 hljs.registerLanguage('sql', sql)
@@ -19,6 +19,7 @@ type AskTurn = {
   question: string
   response?: AskResponse
   pending?: boolean
+  status?: string
   error?: string
 }
 
@@ -37,19 +38,46 @@ export function AskPage() {
     const question = input.trim()
     if (!question || pending) return
     const id = crypto.randomUUID()
-    setTurns((prev) => [...prev, { id, question, pending: true }])
+    setTurns((prev) => [...prev, { id, question, pending: true, status: '正在理解问题…' }])
     setInput('')
     setPending(true)
     try {
-      const response = await postAsk({ question, session_id: sessionIdRef.current })
-      sessionIdRef.current = response.session_id
-      setTurns((prev) =>
-        prev.map((turn) => (turn.id === id ? { ...turn, pending: false, response } : turn)),
-      )
+      let partialSql: string | undefined
+      for await (const ev of streamAsk({ question, session_id: sessionIdRef.current })) {
+        if (ev.type === 'status') {
+          const msg = ev.payload.message
+          setTurns((prev) =>
+            prev.map((t) => (t.id === id ? { ...t, status: msg } : t)),
+          )
+        } else if (ev.type === 'sql') {
+          partialSql = ev.payload.sql
+          setTurns((prev) =>
+            prev.map((t) =>
+              t.id === id
+                ? {
+                    ...t,
+                    response: { ...(t.response ?? ({} as AskResponse)), sql: partialSql ?? null },
+                  }
+                : t,
+            ),
+          )
+        } else if (ev.type === 'done') {
+          sessionIdRef.current = ev.payload.session_id
+          setTurns((prev) =>
+            prev.map((t) =>
+              t.id === id ? { ...t, pending: false, status: undefined, response: ev.payload } : t,
+            ),
+          )
+        } else if (ev.type === 'error') {
+          throw new Error(ev.payload.message)
+        }
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       setTurns((prev) =>
-        prev.map((turn) => (turn.id === id ? { ...turn, pending: false, error: message } : turn)),
+        prev.map((turn) =>
+          turn.id === id ? { ...turn, pending: false, status: undefined, error: message } : turn,
+        ),
       )
     } finally {
       setPending(false)
@@ -119,7 +147,10 @@ function AskTurnView({ turn }: { turn: AskTurn }) {
         </CardHeader>
         <CardContent className='space-y-3 text-sm'>
           {turn.pending ? (
-            <span className='text-muted-foreground'>思考中…</span>
+            <span className='flex items-center gap-2 text-muted-foreground'>
+              <span className='inline-block size-1.5 animate-pulse rounded-full bg-muted-foreground/60' />
+              {turn.status ?? '思考中…'}
+            </span>
           ) : turn.error ? (
             <span className='text-destructive'>{turn.error}</span>
           ) : (

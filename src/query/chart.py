@@ -14,12 +14,27 @@ from src.query.answer import _format_report_period, _FIELD_UNITS
 
 logger = logging.getLogger(__name__)
 
-# Chinese font support — try common CJK fonts, fall back gracefully
+# Chinese font support — covers common CJK font names across OSes.
+# fonts-noto-cjk on Debian/Ubuntu (our Dockerfile) registers as the JP
+# variant even though the .ttc covers SC/TC/JP/KR glyphs, so include it.
 _FONT_CANDIDATES = [
-    "SimHei", "WenQuanYi Micro Hei", "Noto Sans CJK SC",
-    "Microsoft YaHei", "PingFang SC", "Source Han Sans SC",
+    "Noto Sans CJK SC", "Noto Sans CJK JP", "Noto Sans CJK",
+    "Noto Serif CJK SC", "Noto Serif CJK JP",
+    "WenQuanYi Micro Hei", "WenQuanYi Zen Hei",
+    "SimHei", "Microsoft YaHei", "PingFang SC",
+    "Source Han Sans SC", "Source Han Sans CN",
+    "Hiragino Sans GB",
 ]
-_FALLBACK_FONT_PATH = Path("/usr/share/fonts/truetype/wqy/wqy-microhei.ttc")
+# Filesystem fallbacks. First-match wins. Covers Debian/Ubuntu package
+# layouts for fonts-noto-cjk and fonts-wqy-microhei, plus macOS.
+_FALLBACK_FONT_PATHS = [
+    Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"),
+    Path("/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc"),
+    Path("/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc"),
+    Path("/usr/share/fonts/truetype/wqy/wqy-microhei.ttc"),
+    Path("/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc"),
+    Path("/System/Library/Fonts/PingFang.ttc"),
+]
 
 
 def _configure_cjk_font(
@@ -37,19 +52,30 @@ def _configure_cjk_font(
 
         plt.rcParams["font.sans-serif"] = [font_name] + plt.rcParams.get("font.sans-serif", [])
         plt.rcParams["axes.unicode_minus"] = False
+        logger.info("CJK font configured: %s", font_name)
         return font_name
 
-    fallback_path = fallback_font_path or _FALLBACK_FONT_PATH
-    if fallback_path.exists():
+    candidates = [fallback_font_path] if fallback_font_path else list(_FALLBACK_FONT_PATHS)
+    for fallback_path in candidates:
+        if fallback_path is None or not fallback_path.exists():
+            continue
         try:
             font_properties = font_manager.FontProperties(fname=str(fallback_path))
             font_name = font_properties.get_name()
             current_fonts = plt.rcParams.get("font.sans-serif", [])
-            plt.rcParams["font.sans-serif"] = [font_name] + [font for font in current_fonts if font != font_name]
+            plt.rcParams["font.sans-serif"] = [font_name] + [f for f in current_fonts if f != font_name]
             plt.rcParams["axes.unicode_minus"] = False
+            # Best-effort: also register with fontManager so findfont() later
+            # resolves glyph paths correctly. Not fatal if it fails (tests pass
+            # fake files that won't load).
+            try:
+                font_manager.fontManager.addfont(str(fallback_path))
+            except Exception:
+                pass
+            logger.info("CJK font configured from file: %s (%s)", font_name, fallback_path)
             return str(fallback_path)
         except Exception as exc:
-            logger.warning("Failed to load fallback CJK font from %s: %s", fallback_path, exc)
+            logger.warning("Failed to load CJK font from %s: %s", fallback_path, exc)
 
     logger.warning(
         "No CJK font found; matplotlib default font will be used and Chinese characters may not render correctly."
