@@ -1,22 +1,22 @@
-// taidi-overlay: runtime settings drawer for live-editing LLM + OV_VLM
-// credentials. Slides in from the right so the panel is short vertically
-// and wide horizontally, with LLM / OV_VLM laid out side-by-side.
-//
-// OV_EMBEDDING_* is shown read-only: swapping the embedding model
-// invalidates the existing vector index, so we refuse to edit it here.
+// taidi-overlay: runtime settings dialog. Centered, wide-but-short, with
+// LLM / OV_VLM sections collapsed by default — click a section header to
+// expand its form. OV_EMBEDDING_* is always-visible read-only because
+// changing the embedding model would invalidate the existing vector index.
 import * as React from 'react'
+import { ChevronDownIcon } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { Button } from '#/components/ui/button'
-import { Input } from '#/components/ui/input'
 import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from '#/components/ui/sheet'
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '#/components/ui/dialog'
+import { Input } from '#/components/ui/input'
+import { cn } from '#/lib/utils'
 
 const ENV_BASE_URL =
   typeof import.meta.env.VITE_API_BASE_URL === 'string'
@@ -38,6 +38,8 @@ type UpdatablePayload = {
   ov_vlm?: { api_base?: string; api_key?: string; model?: string }
 }
 
+type SectionKey = 'llm' | 'vlm'
+
 function Labeled({
   label,
   children,
@@ -53,6 +55,22 @@ function Labeled({
   )
 }
 
+function summary(
+  snapshot: SettingsSnapshot[keyof SettingsSnapshot] | undefined,
+): string {
+  if (!snapshot) return '未配置'
+  const parts: string[] = []
+  if (snapshot.model) parts.push(snapshot.model)
+  if (snapshot.api_base) {
+    try {
+      parts.push(new URL(snapshot.api_base).host)
+    } catch {
+      parts.push(snapshot.api_base)
+    }
+  }
+  return parts.join(' · ') || '未配置'
+}
+
 export function TaidiSettingsDialog({
   open,
   onOpenChange,
@@ -63,6 +81,7 @@ export function TaidiSettingsDialog({
   const [snapshot, setSnapshot] = React.useState<SettingsSnapshot | null>(null)
   const [loadError, setLoadError] = React.useState<string | null>(null)
   const [saving, setSaving] = React.useState(false)
+  const [expanded, setExpanded] = React.useState<SectionKey | null>(null)
 
   const [llmBase, setLlmBase] = React.useState('')
   const [llmKey, setLlmKey] = React.useState('')
@@ -75,6 +94,7 @@ export function TaidiSettingsDialog({
     if (!open) return
     setLoadError(null)
     setSnapshot(null)
+    setExpanded(null)
     void (async () => {
       try {
         const res = await fetch(apiUrl('/api/settings'))
@@ -92,6 +112,9 @@ export function TaidiSettingsDialog({
       }
     })()
   }, [open])
+
+  const toggle = (key: SectionKey) =>
+    setExpanded((prev) => (prev === key ? null : key))
 
   const onSave = async () => {
     setSaving(true)
@@ -127,96 +150,132 @@ export function TaidiSettingsDialog({
   }
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent
-        side='right'
-        className='flex w-full max-w-[var(--settings-sheet-width)] flex-col gap-4 sm:max-w-[var(--settings-sheet-width)]'
-        style={{ '--settings-sheet-width': 'min(780px, 90vw)' } as React.CSSProperties}
-      >
-        <SheetHeader>
-          <SheetTitle>运行时设置</SheetTitle>
-          <SheetDescription>
-            在线修改 LLM / OV VLM 凭据，保存后下一次请求自动生效。Embedding 不可改
-            （改了会使已有的向量索引失效）。留空 API Key 表示"保持现有值不变"。
-          </SheetDescription>
-        </SheetHeader>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className='w-[min(640px,92vw)] max-w-none gap-3'>
+        <DialogHeader>
+          <DialogTitle>运行时设置</DialogTitle>
+          <DialogDescription>
+            点击下方分区展开编辑。API Key 留空表示"保持不变"。
+          </DialogDescription>
+        </DialogHeader>
 
-        <div className='flex-1 overflow-y-auto px-4'>
-          {loadError ? (
-            <div className='rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive'>
-              加载失败：{loadError}
-            </div>
-          ) : !snapshot ? (
-            <div className='text-sm text-muted-foreground'>加载中…</div>
-          ) : (
-            <div className='space-y-6'>
-              <div className='grid gap-4 md:grid-cols-2'>
-                <section className='rounded-lg border bg-card/50 p-4'>
-                  <div className='mb-3 text-sm font-medium'>助手 LLM</div>
-                  <div className='space-y-3'>
-                    <Labeled label='API Base'>
-                      <Input value={llmBase} onChange={(e) => setLlmBase(e.target.value)} />
-                    </Labeled>
-                    <Labeled label='Model'>
-                      <Input value={llmModel} onChange={(e) => setLlmModel(e.target.value)} />
-                    </Labeled>
-                    <Labeled label='API Key'>
-                      <Input
-                        type='password'
-                        placeholder={snapshot.llm.api_key_masked || '未配置'}
-                        value={llmKey}
-                        onChange={(e) => setLlmKey(e.target.value)}
-                      />
-                    </Labeled>
-                  </div>
-                </section>
+        {loadError ? (
+          <div className='rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive'>
+            加载失败：{loadError}
+          </div>
+        ) : !snapshot ? (
+          <div className='text-sm text-muted-foreground'>加载中…</div>
+        ) : (
+          <div className='flex flex-col gap-2'>
+            <CollapsibleSection
+              title='助手 LLM'
+              summaryText={summary(snapshot.llm)}
+              open={expanded === 'llm'}
+              onToggle={() => toggle('llm')}
+            >
+              <Labeled label='API Base'>
+                <Input value={llmBase} onChange={(e) => setLlmBase(e.target.value)} />
+              </Labeled>
+              <Labeled label='Model'>
+                <Input value={llmModel} onChange={(e) => setLlmModel(e.target.value)} />
+              </Labeled>
+              <Labeled label='API Key'>
+                <Input
+                  type='password'
+                  placeholder={snapshot.llm.api_key_masked || '未配置'}
+                  value={llmKey}
+                  onChange={(e) => setLlmKey(e.target.value)}
+                />
+              </Labeled>
+            </CollapsibleSection>
 
-                <section className='rounded-lg border bg-card/50 p-4'>
-                  <div className='mb-3 text-sm font-medium'>OpenViking VLM</div>
-                  <div className='space-y-3'>
-                    <Labeled label='API Base'>
-                      <Input value={vlmBase} onChange={(e) => setVlmBase(e.target.value)} />
-                    </Labeled>
-                    <Labeled label='Model'>
-                      <Input value={vlmModel} onChange={(e) => setVlmModel(e.target.value)} />
-                    </Labeled>
-                    <Labeled label='API Key'>
-                      <Input
-                        type='password'
-                        placeholder={snapshot.ov_vlm.api_key_masked || '未配置'}
-                        value={vlmKey}
-                        onChange={(e) => setVlmKey(e.target.value)}
-                      />
-                    </Labeled>
-                  </div>
-                </section>
+            <CollapsibleSection
+              title='OpenViking VLM'
+              summaryText={summary(snapshot.ov_vlm)}
+              open={expanded === 'vlm'}
+              onToggle={() => toggle('vlm')}
+            >
+              <Labeled label='API Base'>
+                <Input value={vlmBase} onChange={(e) => setVlmBase(e.target.value)} />
+              </Labeled>
+              <Labeled label='Model'>
+                <Input value={vlmModel} onChange={(e) => setVlmModel(e.target.value)} />
+              </Labeled>
+              <Labeled label='API Key'>
+                <Input
+                  type='password'
+                  placeholder={snapshot.ov_vlm.api_key_masked || '未配置'}
+                  value={vlmKey}
+                  onChange={(e) => setVlmKey(e.target.value)}
+                />
+              </Labeled>
+            </CollapsibleSection>
+
+            <section className='rounded-md border border-dashed bg-muted/30 px-3 py-2 text-xs text-muted-foreground'>
+              <div className='mb-0.5 font-medium text-foreground/80'>
+                OpenViking Embedding（只读）
               </div>
+              <div>
+                {snapshot.ov_embedding.model || '未配置'}
+                {snapshot.ov_embedding.dimension
+                  ? ` · dim ${snapshot.ov_embedding.dimension}`
+                  : ''}
+                {snapshot.ov_embedding.api_base
+                  ? ` · ${(() => {
+                      try {
+                        return new URL(snapshot.ov_embedding.api_base).host
+                      } catch {
+                        return snapshot.ov_embedding.api_base
+                      }
+                    })()}`
+                  : ''}
+              </div>
+            </section>
+          </div>
+        )}
 
-              <section className='rounded-lg border border-dashed bg-muted/30 px-4 py-3 text-xs text-muted-foreground'>
-                <div className='mb-1 font-medium text-foreground/80'>
-                  OpenViking Embedding（只读，改动会使向量索引失效）
-                </div>
-                <div className='grid gap-x-4 gap-y-1 sm:grid-cols-2'>
-                  <span>Model: {snapshot.ov_embedding.model || '未配置'}</span>
-                  <span>Dim: {snapshot.ov_embedding.dimension || '—'}</span>
-                  <span className='sm:col-span-2'>
-                    API Base: {snapshot.ov_embedding.api_base || '—'}
-                  </span>
-                </div>
-              </section>
-            </div>
-          )}
-        </div>
-
-        <SheetFooter className='flex-row justify-end gap-2'>
+        <DialogFooter>
           <Button variant='outline' onClick={() => onOpenChange(false)} disabled={saving}>
             取消
           </Button>
           <Button onClick={() => void onSave()} disabled={!snapshot || saving}>
             {saving ? '保存中…' : '保存'}
           </Button>
-        </SheetFooter>
-      </SheetContent>
-    </Sheet>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function CollapsibleSection({
+  title,
+  summaryText,
+  open,
+  onToggle,
+  children,
+}: {
+  title: string
+  summaryText: string
+  open: boolean
+  onToggle: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <section className='overflow-hidden rounded-md border bg-card/50'>
+      <button
+        type='button'
+        onClick={onToggle}
+        className='flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left transition-colors hover:bg-accent/40'
+      >
+        <span className='flex min-w-0 flex-col gap-0.5'>
+          <span className='text-sm font-medium'>{title}</span>
+          <span className='truncate text-xs text-muted-foreground'>{summaryText}</span>
+        </span>
+        <ChevronDownIcon
+          className={cn('size-4 shrink-0 transition-transform', open && 'rotate-180')}
+        />
+      </button>
+      {open ? <div className='space-y-3 border-t px-3 pb-3 pt-3'>{children}</div> : null}
+    </section>
   )
 }

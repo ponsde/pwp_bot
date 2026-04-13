@@ -1,20 +1,28 @@
 import '#/i18n'
-// taidi-overlay: purge any stale baseUrl from a previous visit to a
-// different OV host before AppConnectionProvider reads it. Embedded OV is
-// always same-origin; a lingering http://127.0.0.1:1933 (or similar) from
-// upstream-dev localStorage makes /health hang and the top-bar badge stuck
-// on "Detecting".
+// taidi-overlay: seed AppConnectionProvider's persisted connection so its
+// baseUrl is the current origin (real URL), not the Vite-baked "/" which
+// normalizeBaseUrl strips to an empty string — and an empty baseUrl short-
+// circuits detectServerMode straight to "offline". Also evicts any legacy
+// value pointing at someone else's OV dev host.
 try {
-  const raw = window.localStorage.getItem('ov_console_connection')
-  if (raw) {
-    const parsed = JSON.parse(raw) as { baseUrl?: string }
-    const base = parsed?.baseUrl
-    if (base && !/^\/?$/.test(base) && !base.startsWith('/')) {
-      window.localStorage.removeItem('ov_console_connection')
-    }
+  const key = 'ov_console_connection'
+  const desired = window.location.origin
+  const raw = window.localStorage.getItem(key)
+  const parsed: Record<string, unknown> | null = raw ? JSON.parse(raw) : null
+  const current = typeof parsed?.baseUrl === 'string' ? parsed.baseUrl.trim() : ''
+  const isStale =
+    !current ||
+    current === '/' ||
+    /^https?:\/\/127\.0\.0\.1/.test(current) ||
+    /^https?:\/\/localhost/.test(current)
+  if (isStale) {
+    window.localStorage.setItem(
+      key,
+      JSON.stringify({ ...(parsed ?? {}), baseUrl: desired }),
+    )
   }
 } catch {
-  window.localStorage.removeItem('ov_console_connection')
+  /* ignore malformed localStorage */
 }
 import ReactDOM from 'react-dom/client'
 import { QueryClientProvider } from '@tanstack/react-query'
