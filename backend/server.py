@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Union
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -35,6 +35,7 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 DB_PATH = os.getenv("SQLITE_DB_PATH", str(ROOT_DIR / "data" / "db" / "finance.db"))
 CHART_DIR = ROOT_DIR / "result"
 WEB_DIST_DIR = ROOT_DIR / "web-studio" / "dist"
+UPLOAD_TMP_DIR = ROOT_DIR / "data" / "tmp_uploads"
 
 
 @dataclass
@@ -64,6 +65,24 @@ class AskResponse(BaseModel):
     references: list[Reference] = Field(default_factory=list)
     needs_clarification: bool = False
     error: str | None = None
+
+
+class AddResourceRequest(BaseModel):
+    temp_file_id: str | None = None
+    path: str | None = None
+    source_name: str | None = None
+    reason: str = ""
+    instruction: str = ""
+    wait: bool = True
+    build_index: bool = True
+    summarize: bool = False
+    telemetry: bool = False
+    # Accept + silently ignore the rest of OV's add-resource surface the
+    # frontend may send (strict / ignore_dirs / include / exclude / ...)
+    # so the contract with the vendored SPA stays compatible.
+    strict: bool | None = None
+    directly_upload_media: bool | None = None
+    preserve_structure: bool | None = None
 
 
 class StatsResponse(BaseModel):
@@ -244,6 +263,102 @@ def create_app() -> FastAPI:
         if _is_research_engine(engine):
             return _answer_with_research(engine, req, session_id, session)
         return _answer_with_text2sql(engine, req, session_id, session)
+
+    @app.post("/api/v1/resources/temp_upload")
+    async def resources_temp_upload(
+        file: UploadFile = File(...),
+        telemetry: bool = Form(False),
+    ) -> dict[str, Any]:
+        """Drop-in for OV's temp_upload.
+
+        Stores the upload at ``tmp_uploads/<uuid>/<original-filename>`` so
+        downstream ETL (which parses stock_code/report_period from the
+        filename) sees the real name. The ``temp_file_id`` is just the UUID
+        directory — the add_resource call resolves the single file inside."""
+        original_name = Path(file.filename or "upload.bin").name
+        tmp_id = uuid.uuid4().hex
+        tmp_dir = UPLOAD_TMP_DIR / tmp_id
+        tmp_dir.mkdir(parents=True, exist_ok=True)
+        target = tmp_dir / original_name
+        target.write_bytes(await file.read())
+        return {"status": "ok", "result": {"temp_file_id": tmp_id}}
+
+    @app.post("/api/v1/resources")
+    def resources_add(req: AddResourceRequest) -> dict[str, Any]:
+        """Receive a staged file and feed it through BOTH pipelines:
+        1. ETL → SQLite (so Text2SQL can query it)
+        2. OpenViking add_resource → vector index (so RAG can retrieve it)
+
+        Failures on one side surface as warnings; we only return status=error
+        if both pipelines die."""
+        if not req.temp_file_id:
+            raise HTTPException(status_code=400, detail="temp_file_id required")
+
+        tmp_dir = UPLOAD_TMP_DIR / req.temp_file_id
+        if not tmp_dir.is_dir():
+            raise HTTPException(status_code=404, detail="temp_file_id not found")
+        files = [p for p in tmp_dir.iterdir() if p.is_file()]
+        if not files:
+            raise HTTPException(status_code=404, detail="staged upload is empty")
+        pdf_path = files[0]
+
+        warnings: list[str] = []
+        errors: list[str] = []
+        etl_status: str | None = None
+        ov_uri: str | None = None
+
+        # Pipeline 1: ETL into SQLite (financial-report PDFs only)
+        if pdf_path.suffix.lower() == ".pdf":
+            try:
+                from src.etl.loader import ETLLoader
+
+                loader = ETLLoader(Path(DB_PATH))
+                result = loader.load_pdf(pdf_path)
+                etl_status = result.get("status", "unknown")
+                if etl_status == "skipped":
+                    warnings.append(f"ETL skipped: {result.get('reason', '')}")
+                elif etl_status not in {"ok", "loaded"}:
+                    warnings.append(f"ETL {etl_status}: {result}")
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("ETL failed for %s", pdf_path)
+                warnings.append(f"ETL failed: {exc}")
+
+        # Pipeline 2: OpenViking vector index. Reuse the already-initialized
+        # client from ResearchQAEngine so we don't collide on the OV lock.
+        engine = get_engine()
+        ov_client = getattr(engine, "client", None)
+        if ov_client is None:
+            errors.append("OpenViking client unavailable — RAG indexing skipped")
+        else:
+            try:
+                from src.knowledge.ov_adapter import store_resource
+
+                ov_uri = store_resource(ov_client, pdf_path)
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("OV add_resource failed for %s", pdf_path)
+                errors.append(f"RAG indexing failed: {exc}")
+
+        # Only hard-fail if BOTH pipelines died (or RAG is essential and failed).
+        if errors and etl_status not in {"ok", "loaded"}:
+            return {
+                "status": "error",
+                "result": {
+                    "errors": errors,
+                    "warnings": warnings,
+                    "etl_status": etl_status,
+                    "root_uri": ov_uri,
+                },
+            }
+
+        return {
+            "status": "ok",
+            "result": {
+                "warnings": warnings + errors,
+                "etl_status": etl_status,
+                "root_uri": ov_uri,
+                "source_name": req.source_name,
+            },
+        }
 
     CHART_DIR.mkdir(parents=True, exist_ok=True)
     app.mount("/charts", StaticFiles(directory=str(CHART_DIR)), name="charts")
