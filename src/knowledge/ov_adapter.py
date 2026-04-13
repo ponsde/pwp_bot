@@ -28,12 +28,15 @@ def _env(name: str, default: str = "") -> str:
 def _synthesize_config_from_env() -> dict[str, Any]:
     """Build an ov.conf dict from env vars (for container / serverless deploys).
 
-    OpenViking's embedding and VLM live in their own namespace so they don't
-    get confused with the assistant's own LLM/embedding/VLM:
+    OpenViking's own model stack lives in its own namespace so it doesn't get
+    confused with the assistant's own LLM/embedding/VLM:
 
     - ``OV_EMBEDDING_API_{KEY,BASE,MODEL}`` — required for OV retrieval.
-    - ``OV_VLM_API_{KEY,BASE,MODEL}``      — optional; enables VLM-powered
-      parsing when present. Without it OV falls back to embedding-only."""
+    - ``OV_LLM_API_{KEY,BASE,MODEL}``      — required for L0/L1 summary
+      generation (overview / abstract). In OV 0.3.x the config schema calls
+      this block ``vlm`` because the same model serves text + vision, but
+      functionally it's an LLM. ``OV_VLM_*`` is accepted as a backward-compat
+      alias."""
     embedding_base = _env("OV_EMBEDDING_API_BASE")
     embedding_key = _env("OV_EMBEDDING_API_KEY")
     embedding_model = _env("OV_EMBEDDING_MODEL")
@@ -54,15 +57,16 @@ def _synthesize_config_from_env() -> dict[str, Any]:
             }
         },
     }
-    vlm_base = _env("OV_VLM_API_BASE")
-    vlm_model = _env("OV_VLM_MODEL")
-    vlm_key = _env("OV_VLM_API_KEY")
-    if vlm_base and vlm_model and vlm_key:
+    # OV's LLM (also serves as VLM). Prefer OV_LLM_* but accept OV_VLM_* alias.
+    llm_base = _env("OV_LLM_API_BASE") or _env("OV_VLM_API_BASE")
+    llm_model = _env("OV_LLM_MODEL") or _env("OV_VLM_MODEL")
+    llm_key = _env("OV_LLM_API_KEY") or _env("OV_VLM_API_KEY")
+    if llm_base and llm_model and llm_key:
         conf["vlm"] = {
-            "api_base": vlm_base,
-            "api_key": vlm_key,
+            "api_base": llm_base,
+            "api_key": llm_key,
             "provider": "openai",
-            "model": vlm_model,
+            "model": llm_model,
         }
     return conf
 
