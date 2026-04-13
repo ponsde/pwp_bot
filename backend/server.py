@@ -206,6 +206,17 @@ def create_app() -> FastAPI:
     def health() -> dict[str, Any]:
         return {"status": "ok", "rag_enabled": _is_research_engine(get_engine())}
 
+    @app.get("/health")
+    def ov_compatible_health() -> dict[str, Any]:
+        """Satisfies the web-studio shell's OV connection probe.
+
+        The vendored frontend pings ``$VITE_OV_BASE_URL/health`` at boot to
+        decide its 'server mode' badge. Presence of ``user_id`` flips it to
+        'dev-implicit' (muted badge, no ConnectionDialog nag). We run OV
+        embedded, so there's no real OV server — this endpoint tells the
+        frontend it's talking to one."""
+        return {"status": "ok", "user_id": "embedded"}
+
     @app.get("/api/stats", response_model=StatsResponse)
     def stats() -> StatsResponse:
         try:

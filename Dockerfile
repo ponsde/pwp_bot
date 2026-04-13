@@ -8,6 +8,11 @@ COPY web-studio/package.json web-studio/package-lock.json ./
 RUN npm ci --no-audit --no-fund
 
 COPY web-studio/ ./
+# Vite bakes VITE_* into the bundle at build time. Point both OV (vendored
+# frontend's legacy client) and our own API base at the same origin so the
+# built SPA calls /health and /api/* against whatever server hosts it.
+ENV VITE_OV_BASE_URL=/ \
+    VITE_API_BASE_URL=
 RUN npm run build
 
 
