@@ -37,8 +37,8 @@ python3 pipeline.py --task answer \
   --questions <questions.xlsx> \
   --output result_2.xlsx
 
-# 7. 启动 Web UI
-python3 app.py
+# 7. 启动 Web UI（FastAPI + web-studio SPA，见 backend/README.md）
+uvicorn backend.server:app --host 0.0.0.0 --port 8000
 ```
 
 ## 项目结构
@@ -61,8 +61,9 @@ src/
 scripts/
   etl_quality_check.py  # 数据质量自检（值域/跨表一致性/YoY 校验/覆盖率）
 tests/                  # pytest 测试（无需 LLM API）
-pipeline.py             # 主入口
-app.py                  # Gradio Web UI
+pipeline.py             # 主入口（ETL / 答题）
+backend/                # FastAPI 服务（给 web-studio SPA 提供 /api/ask 等）
+web-studio/             # React 前端（vendored from Ferry-200/OpenViking new-frontend）
 config.py               # 配置加载
 ```
 
