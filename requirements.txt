@@ -8,3 +8,6 @@ gradio
 matplotlib
 faiss-cpu
 openviking>=0.3.5
+fastapi>=0.115
+uvicorn[standard]>=0.30
+pydantic>=2
