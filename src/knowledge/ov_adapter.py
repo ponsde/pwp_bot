@@ -43,8 +43,10 @@ def _synthesize_config_from_env() -> dict[str, Any]:
             "ov.conf missing and OV_EMBEDDING_API_{BASE,KEY,MODEL} not all set; "
             "cannot bootstrap OpenViking config from env."
         )
+    # Embedded mode (binding-client) is the default — no port binding,
+    # everything runs in-process via OV's Rust/Go binding lib. Only network
+    # traffic is outbound HTTPS to the embedding/VLM endpoints above.
     conf: dict[str, Any] = {
-        "storage": {"agfs": {"port": int(_env("OV_AGFS_PORT", "1834"))}},
         "embedding": {
             "dense": {
                 "api_base": embedding_base,
