@@ -73,7 +73,11 @@ class AddResourceRequest(BaseModel):
     source_name: str | None = None
     reason: str = ""
     instruction: str = ""
-    wait: bool = True
+    # Default wait=False so the HTTP request returns once OV has queued
+    # the work. Summary generation (L0/L1 via VLM) can take minutes per
+    # multi-page report; blocking here makes the upload UI freeze.
+    # Users refresh the Resources tab to see indexing progress.
+    wait: bool = False
     build_index: bool = True
     summarize: bool = False
     telemetry: bool = False
@@ -333,7 +337,7 @@ def create_app() -> FastAPI:
             try:
                 from src.knowledge.ov_adapter import store_resource
 
-                ov_uri = store_resource(ov_client, pdf_path)
+                ov_uri = store_resource(ov_client, pdf_path, wait=req.wait)
             except Exception as exc:  # noqa: BLE001
                 logger.exception("OV add_resource failed for %s", pdf_path)
                 errors.append(f"RAG indexing failed: {exc}")

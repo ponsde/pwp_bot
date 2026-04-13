@@ -115,12 +115,17 @@ def init_client(data_path: str | Path | None = None, config_path: str | Path | N
         raise OpenVikingAdapterError(f"Failed to initialize OpenViking: {exc}") from exc
 
 
-def store_resource(client: Any, pdf_path: str | Path) -> str:
+def store_resource(client: Any, pdf_path: str | Path, wait: bool = True) -> str:
+    """Add ``pdf_path`` to OpenViking.
+
+    ``wait=True`` blocks until OV finishes indexing (good for CLI); web
+    callers should pass ``wait=False`` so the HTTP request doesn't hang
+    on minutes-long VLM summary generation."""
     path = Path(pdf_path)
     if not path.exists():
         raise FileNotFoundError(f"Research file not found: {path}")
     try:
-        result = client.add_resource(str(path), wait=True, build_index=True)
+        result = client.add_resource(str(path), wait=wait, build_index=True)
     except Exception as exc:
         raise OpenVikingAdapterError(f"Failed to store resource {path}: {exc}") from exc
     # 0.3.x uses "root_uri"; 0.2.x used "uri"/"target_uri". Try all, fall back to path.
