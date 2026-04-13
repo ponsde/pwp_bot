@@ -37,9 +37,13 @@ result/*.xlsx
 # Worktrees
 .worktrees/
 
-# OpenViking (contains API keys and index data)
+# OpenViking secrets — never commit
 ov.conf
-.openviking/
+# OpenViking index: small (~MB range), ships in the Railway image so the
+# container doesn't need to rebuild on boot. Built offline on the test
+# server, scp'd back, then force-added if necessary. Keeping it unignored
+# by default; add per-file rules below if anything sensitive slips in.
+#.openviking/
 
 # Local-only: Claude instructions, OpenSpec artifacts, AI context
 CLAUDE.md

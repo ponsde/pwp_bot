@@ -104,10 +104,27 @@ python3 -m pytest tests/test_etl_quality_check.py -v
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
-| `LLM_API_KEY` | (必填) | LLM API 密钥 |
-| `LLM_API_BASE` | (必填) | LLM OpenAI 兼容 API 基础 URL |
-| `LLM_MODEL` | (必填) | LLM 模型名称 |
-| `EMBEDDING_API_KEY` | (可选) | 嵌入服务 API 密钥（与 LLM 独立） |
-| `EMBEDDING_API_BASE` | (可选) | 嵌入服务 API 基础 URL |
-| `EMBEDDING_MODEL` | `BAAI/bge-m3` | 嵌入模型名称 |
-| `SQLITE_DB_PATH` | `data/db/financial_reports.db` | 数据库路径 |
+**财报助手自己的**
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `LLM_API_KEY` | (必填) | 主 LLM 密钥（Text2SQL / 回答生成） |
+| `LLM_API_BASE` | (必填) | 主 LLM OpenAI 兼容基础 URL |
+| `LLM_MODEL` | (必填) | 主 LLM 模型名 |
+| `EMBEDDING_API_KEY` | (预留) | 嵌入服务密钥（目前 RAG 走 OpenViking，未使用） |
+| `EMBEDDING_API_BASE` | (预留) | 嵌入服务基础 URL |
+| `EMBEDDING_MODEL` | (预留) | 嵌入模型名 |
+| `VLM_API_KEY` | (预留) | 助手自己的 VLM 密钥（PDF 扫描页解析） |
+| `VLM_API_BASE` | (预留) | 助手自己的 VLM 基础 URL |
+| `VLM_MODEL` | (预留) | 助手自己的 VLM 模型名 |
+| `SQLITE_DB_PATH` | `data/db/finance.db` | SQLite 数据库路径 |
+
+**OpenViking（研报 RAG 专用，独立命名空间）**
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `OV_EMBEDDING_API_KEY` | (RAG 必填) | OV embedding 服务密钥 |
+| `OV_EMBEDDING_API_BASE` | (RAG 必填) | OV embedding 基础 URL |
+| `OV_EMBEDDING_MODEL` | (RAG 必填) | OV embedding 模型名 |
+| `OV_EMBEDDING_DIMENSION` | `1024` | OV embedding 维度 |
+| `OV_VLM_API_KEY` | (可选) | OV VLM 密钥；填了 OV 才开 VLM 解析 |
+| `OV_VLM_API_BASE` | (可选) | OV VLM 基础 URL |
+| `OV_VLM_MODEL` | (可选) | OV VLM 模型名 |

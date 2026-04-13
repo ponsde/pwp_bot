@@ -21,14 +21,69 @@ class OpenVikingAdapterError(RuntimeError):
     """Raised when OpenViking cannot be initialized or queried."""
 
 
+def _env(name: str, default: str = "") -> str:
+    return os.environ.get(name, default).strip()
+
+
+def _synthesize_config_from_env() -> dict[str, Any]:
+    """Build an ov.conf dict from env vars (for container / serverless deploys).
+
+    OpenViking's embedding and VLM live in their own namespace so they don't
+    get confused with the assistant's own LLM/embedding/VLM:
+
+    - ``OV_EMBEDDING_API_{KEY,BASE,MODEL}`` — required for OV retrieval.
+    - ``OV_VLM_API_{KEY,BASE,MODEL}``      — optional; enables VLM-powered
+      parsing when present. Without it OV falls back to embedding-only."""
+    embedding_base = _env("OV_EMBEDDING_API_BASE")
+    embedding_key = _env("OV_EMBEDDING_API_KEY")
+    embedding_model = _env("OV_EMBEDDING_MODEL")
+    if not embedding_base or not embedding_key or not embedding_model:
+        raise OpenVikingAdapterError(
+            "ov.conf missing and OV_EMBEDDING_API_{BASE,KEY,MODEL} not all set; "
+            "cannot bootstrap OpenViking config from env."
+        )
+    conf: dict[str, Any] = {
+        "storage": {"agfs": {"port": int(_env("OV_AGFS_PORT", "1834"))}},
+        "embedding": {
+            "dense": {
+                "api_base": embedding_base,
+                "api_key": embedding_key,
+                "provider": "openai",
+                "dimension": int(_env("OV_EMBEDDING_DIMENSION", "1024")),
+                "model": embedding_model,
+            }
+        },
+    }
+    vlm_base = _env("OV_VLM_API_BASE")
+    vlm_model = _env("OV_VLM_MODEL")
+    vlm_key = _env("OV_VLM_API_KEY")
+    if vlm_base and vlm_model and vlm_key:
+        conf["vlm"] = {
+            "api_base": vlm_base,
+            "api_key": vlm_key,
+            "provider": "openai",
+            "model": vlm_model,
+        }
+    return conf
+
+
+def _resolve_config_path(config_path: Path) -> Path:
+    """Return an existing config file path, synthesizing one from env if needed.
+
+    Prefers an existing ov.conf on disk. Falls back to writing
+    ``/tmp/ov.conf`` from env vars so containers don't need to ship secrets."""
+    if config_path.exists():
+        return config_path
+    import json
+    conf = _synthesize_config_from_env()
+    fallback = Path("/tmp/ov.conf")
+    fallback.write_text(json.dumps(conf, indent=2), encoding="utf-8")
+    return fallback
+
+
 def init_client(data_path: str | Path | None = None, config_path: str | Path | None = None) -> Any:
     target_data_path = Path(data_path or OV_DATA_DIR)
-    target_config_path = Path(config_path or OV_CONFIG_PATH)
-    if not target_config_path.exists():
-        raise OpenVikingAdapterError(
-            f"OpenViking 配置文件不存在：{target_config_path}\n"
-            "请复制 ov.conf.example 到该路径并填写 API 密钥。"
-        )
+    target_config_path = _resolve_config_path(Path(config_path or OV_CONFIG_PATH))
 
     target_data_path.mkdir(parents=True, exist_ok=True)
     os.environ["OPENVIKING_CONFIG_FILE"] = str(target_config_path)
