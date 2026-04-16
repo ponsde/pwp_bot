@@ -12,20 +12,14 @@ const BOT_BASE =
     ? import.meta.env.VITE_API_BASE_URL.trim().replace(/\/+$/, '')
     : ''
 
-const API_KEY =
-  typeof import.meta.env.VITE_VIKINGBOT_API_KEY === 'string'
-    ? import.meta.env.VITE_VIKINGBOT_API_KEY.trim()
-    : 'taidi-bot-key-2026'
-
 function botUrl(path: string): string {
   return `${BOT_BASE}${path}`
 }
 
 function botHeaders(): Record<string, string> {
-  return {
-    'Content-Type': 'application/json',
-    'X-API-Key': API_KEY,
-  }
+  // Same-origin via FastAPI reverse proxy; the server injects the internal
+  // api key so the browser doesn't need to know it.
+  return { 'Content-Type': 'application/json' }
 }
 
 export interface ChatRequest {

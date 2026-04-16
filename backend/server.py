@@ -848,12 +848,17 @@ def create_app() -> FastAPI:
     VIKINGBOT_URL = os.getenv("VIKINGBOT_URL", "http://localhost:18790")
     _proxy_client = httpx.AsyncClient(base_url=VIKINGBOT_URL, timeout=300.0)
 
+    INTERNAL_BOT_KEY = os.getenv("INTERNAL_BOT_KEY", "taidi-bot-key-2026")
+
     @app.api_route("/bot/v1/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
     async def bot_proxy(path: str, request: Request) -> StreamingResponse:
-        """Reverse-proxy /bot/v1/* to vikingbot gateway."""
+        """Reverse-proxy /bot/v1/* to vikingbot gateway.
+        Injects the internal api key so the browser doesn't need to know it."""
         url = f"/bot/v1/{path}"
         headers = dict(request.headers)
         headers.pop("host", None)
+        # Always override with our internal key — same-origin means no user auth
+        headers["x-api-key"] = INTERNAL_BOT_KEY
         body = await request.body()
 
         req = _proxy_client.build_request(
