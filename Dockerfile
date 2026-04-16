@@ -14,7 +14,7 @@ RUN npm run build
 
 
 # --- Stage 2: Python runtime ---
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -38,7 +38,7 @@ COPY . .
 COPY --from=frontend /app/web-studio/dist ./web-studio/dist
 
 # Overlay our patched vikingbot (MCP + CORS + api_key fixes from PR #1392)
-COPY vikingbot_pkg/ /usr/local/lib/python3.11/site-packages/vikingbot/
+COPY vikingbot_pkg/ /usr/local/lib/python3.12/site-packages/vikingbot/
 
 # Startup script: generate ov.conf from env vars, start vikingbot + FastAPI
 COPY <<'STARTUP' /app/start.sh
