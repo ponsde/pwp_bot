@@ -222,7 +222,9 @@ function ComponentHealthBar({
   const record = asRecord(data)
   const sys = asRecord(sysData)
   const components = asRecord(record.components)
-  const names = ['queue', 'vikingdb', 'models', 'lock', 'retrieval']
+  const names = Object.keys(components).length > 0
+    ? Object.keys(components)
+    : ['database', 'llm', 'vikingbot', 'openviking', 'mcp']
   const systemHealthy = sys.initialized === true
   const overallHealthy = record.is_healthy === true
 

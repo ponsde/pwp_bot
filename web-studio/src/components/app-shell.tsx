@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { Link, useRouterState } from '@tanstack/react-router'
+import { Link, useNavigate, useRouterState } from '@tanstack/react-router'
 import {
   ActivityIcon,
   BlocksIcon,
@@ -8,6 +8,7 @@ import {
   HardDriveIcon,
   HomeIcon,
   LanguagesIcon,
+  PlusIcon,
   SettingsIcon,
   UploadIcon,
 } from 'lucide-react'
@@ -50,6 +51,7 @@ import { describeServerMode } from '#/hooks/use-server-mode'
 // taidi-overlay: our own runtime-settings dialog replacing the upstream
 // baseUrl/apiKey connection editor.
 import { TaidiSettingsDialog } from '#/components/taidi-settings-dialog'
+import { SessionNavGroup } from '#/components/chat/session-nav-group'
 
 type NavItem = {
   icon: React.ComponentType
@@ -100,12 +102,8 @@ const NAV_ITEMS: readonly NavItem[] = [
       },
     ],
   },
-  {
-    icon: BlocksIcon,
-    id: 'sessions',
-    titleKey: 'navigation.sessions.title',
-    to: '/sessions',
-  },
+  // 'sessions' is rendered separately below via <SessionNavGroup/> so the
+  // collapsible can list actual chat sessions as submenu children.
   {
     icon: ActivityIcon,
     id: 'operations',
@@ -114,9 +112,20 @@ const NAV_ITEMS: readonly NavItem[] = [
   },
 ] as const
 
-const ALL_NAV_ITEMS: readonly (NavItem | NavSubItem)[] = NAV_ITEMS.flatMap((item) =>
-  item.children ? [...item.children, item] : [item],
-)
+// Stand-in entry for the /sessions route so the header title resolver
+// can look up its label. The actual sidebar UI is rendered separately
+// by <SessionNavGroup/> below since its children are dynamic.
+const SESSIONS_NAV_STUB: NavItem = {
+  icon: BlocksIcon,
+  id: 'sessions',
+  titleKey: 'navigation.sessions.title',
+  to: '/sessions',
+}
+
+const ALL_NAV_ITEMS: readonly (NavItem | NavSubItem)[] = [
+  ...NAV_ITEMS.flatMap((item) => (item.children ? [...item.children, item] : [item])),
+  SESSIONS_NAV_STUB,
+]
 
 const LANGUAGE_OPTIONS = [
   {
@@ -201,6 +210,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 function AppShellInner({ children }: { children: React.ReactNode }) {
   const { i18n, t } = useTranslation(['appShell', 'common'])
   const pathname = useRouterState({ select: (state) => state.location.pathname })
+  const navigate = useNavigate()
   const { serverMode } = useAppConnection()
   const [settingsOpen, setSettingsOpen] = React.useState(false)
   const currentItem = ALL_NAV_ITEMS.find((item) => pathname === item.to || pathname.startsWith(`${item.to}/`))
@@ -271,19 +281,20 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
               <SidebarGroupLabel>{t('sidebar.workspaceGroupLabel', { ns: 'appShell' })}</SidebarGroupLabel>
               <SidebarGroupContent>
                 <SidebarMenu>
-                  {NAV_ITEMS.map((item) => {
+                  {NAV_ITEMS.map((item, index) => {
                     const isActive = pathname === item.to || pathname.startsWith(`${item.to}/`)
                     const title = t(item.titleKey, { ns: 'appShell' })
-
-                    if (item.children) {
-                      return (
-                        <NavGroupItem key={item.id} item={item} pathname={pathname} title={title} t={t} />
-                      )
-                    }
-
                     const Icon = item.icon
 
-                    return (
+                    const rendered = item.children ? (
+                      <NavGroupItem
+                        key={item.id}
+                        item={item as NavItem & { children: readonly NavSubItem[] }}
+                        pathname={pathname}
+                        title={title}
+                        t={t}
+                      />
+                    ) : (
                       <SidebarMenuItem key={item.id}>
                         <SidebarMenuButton
                           render={<Link to={item.to} />}
@@ -295,6 +306,30 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
                         </SidebarMenuButton>
                       </SidebarMenuItem>
                     )
+
+                    // Inject the dynamic Sessions collapsible right after
+                    // 'resources' so it sits between resources and ops.
+                    if (item.id === 'resources') {
+                      return (
+                        <React.Fragment key={item.id}>
+                          {rendered}
+                          <SessionNavGroup />
+                        </React.Fragment>
+                      )
+                    }
+
+                    // Fallback: if 'resources' isn't in the nav for any
+                    // reason, still render SessionNavGroup at the start.
+                    if (index === 0 && !NAV_ITEMS.some((i) => i.id === 'resources')) {
+                      return (
+                        <React.Fragment key={item.id}>
+                          <SessionNavGroup />
+                          {rendered}
+                        </React.Fragment>
+                      )
+                    }
+
+                    return rendered
                   })}
                 </SidebarMenu>
               </SidebarGroupContent>
@@ -322,11 +357,15 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
         </Sidebar>
 
         <SidebarInset className='min-h-0 flex-1 overflow-hidden rounded-none shadow-none md:m-0 md:ml-0'>
-          <ScrollArea className='min-h-0 flex-1'>
-            <div className='mx-auto flex w-full flex-col gap-6 px-4 py-6 md:px-6'>
-              {children}
-            </div>
-          </ScrollArea>
+          {pathname.startsWith('/sessions') ? (
+            children
+          ) : (
+            <ScrollArea className='min-h-0 flex-1'>
+              <div className='mx-auto flex w-full flex-col gap-6 px-4 py-6 md:px-6'>
+                {children}
+              </div>
+            </ScrollArea>
+          )}
         </SidebarInset>
       </div>
 

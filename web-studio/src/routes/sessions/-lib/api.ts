@@ -1,106 +1,158 @@
-const ENV_BASE_URL =
+/**
+ * API layer — vikingbot for chat, our FastAPI for persistence.
+ */
+
+// ---------------------------------------------------------------------------
+// VikingBot endpoints (chat streaming)
+// ---------------------------------------------------------------------------
+
+// Bot requests go to same-origin — FastAPI reverse-proxies /bot/v1/* to vikingbot.
+const BOT_BASE =
   typeof import.meta.env.VITE_API_BASE_URL === 'string'
     ? import.meta.env.VITE_API_BASE_URL.trim().replace(/\/+$/, '')
     : ''
 
-function resolveUrl(path: string): string {
-  return `${ENV_BASE_URL}${path}`
+const API_KEY =
+  typeof import.meta.env.VITE_VIKINGBOT_API_KEY === 'string'
+    ? import.meta.env.VITE_VIKINGBOT_API_KEY.trim()
+    : 'taidi-bot-key-2026'
+
+function botUrl(path: string): string {
+  return `${BOT_BASE}${path}`
 }
 
-export type AskRow = Record<string, unknown>
-
-export type AskResponse = {
-  session_id: string
-  content: string
-  sql: string | null
-  rows: Array<AskRow>
-  chart_url: string | null
-  chart_type: string | null
-  needs_clarification: boolean
-  error: string | null
+function botHeaders(): Record<string, string> {
+  return {
+    'Content-Type': 'application/json',
+    'X-API-Key': API_KEY,
+  }
 }
 
-export type AskRequest = {
-  question: string
+export interface ChatRequest {
+  message: string
   session_id?: string
 }
 
-export async function postAsk(req: AskRequest, signal?: AbortSignal): Promise<AskResponse> {
-  const res = await fetch(resolveUrl('/api/ask'), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(req),
-    signal,
-  })
-  if (!res.ok) {
-    const text = await res.text().catch(() => '')
-    throw new Error(`ask failed (${res.status}): ${text || res.statusText}`)
-  }
-  return (await res.json()) as AskResponse
-}
-
-export type StreamEvent =
-  | { type: 'status'; payload: { stage: string; message: string; route?: string } }
-  | { type: 'sql'; payload: { sql: string } }
-  | { type: 'done'; payload: AskResponse }
-  | { type: 'error'; payload: { message: string } }
-
-/** POST /api/ask/stream and yield SSE events as they arrive. */
-export async function* streamAsk(
-  req: AskRequest,
+export async function sendChatStream(
+  req: ChatRequest,
   signal?: AbortSignal,
-): AsyncGenerator<StreamEvent, void, void> {
-  const res = await fetch(resolveUrl('/api/ask/stream'), {
+): Promise<Response> {
+  const res = await fetch(botUrl('/bot/v1/chat/stream'), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
-    body: JSON.stringify(req),
+    headers: botHeaders(),
+    body: JSON.stringify({ ...req, stream: true }),
     signal,
   })
   if (!res.ok || !res.body) {
     const text = await res.text().catch(() => '')
-    throw new Error(`stream failed (${res.status}): ${text || res.statusText}`)
+    throw new Error(`chat/stream failed (${res.status}): ${text || res.statusText}`)
   }
+  return res
+}
 
-  const reader = res.body.getReader()
-  const decoder = new TextDecoder()
-  let buffer = ''
-  try {
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      buffer += decoder.decode(value, { stream: true })
-      let sep: number
-      while ((sep = buffer.indexOf('\n\n')) !== -1) {
-        const raw = buffer.slice(0, sep)
-        buffer = buffer.slice(sep + 2)
-        const parsed = parseSseBlock(raw)
-        if (parsed) yield parsed
-      }
+// ---------------------------------------------------------------------------
+// Our FastAPI backend (SQLite persistence)
+// ---------------------------------------------------------------------------
+
+const OUR_BASE =
+  typeof import.meta.env.VITE_API_BASE_URL === 'string'
+    ? import.meta.env.VITE_API_BASE_URL.trim().replace(/\/+$/, '')
+    : ''
+
+function ourUrl(path: string): string {
+  return `${OUR_BASE}${path}`
+}
+
+export interface SessionMeta {
+  id: string
+  title: string
+  created_at: string
+  updated_at: string
+}
+
+export async function listSessions(signal?: AbortSignal): Promise<SessionMeta[]> {
+  const res = await fetch(ourUrl('/api/chat/sessions'), { signal })
+  if (!res.ok) return []
+  const data = (await res.json()) as { sessions?: SessionMeta[] }
+  return data.sessions ?? []
+}
+
+export async function deleteSession(id: string): Promise<void> {
+  await fetch(ourUrl(`/api/chat/sessions/${encodeURIComponent(id)}`), { method: 'DELETE' })
+}
+
+export async function renameSession(id: string, title: string): Promise<void> {
+  await fetch(ourUrl(`/api/chat/sessions/${encodeURIComponent(id)}`), {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title }),
+  })
+}
+
+// Message types matching OV's Message interface
+import type { Message } from '../-types/message'
+
+export async function loadSessionMessages(
+  sessionId: string,
+  signal?: AbortSignal,
+): Promise<Message[]> {
+  const res = await fetch(ourUrl(`/api/chat/sessions/${encodeURIComponent(sessionId)}/messages`), {
+    signal,
+  })
+  if (!res.ok) return []
+  const data = (await res.json()) as { messages?: Array<Record<string, unknown>> }
+  const raw = data.messages ?? []
+
+  // Convert flat DB rows to OV Message format (with parts)
+  return raw.map((m) => ({
+    id: (m.id as string) || `msg_${Date.now().toString(36)}`,
+    role: (m.role as 'user' | 'assistant') || 'user',
+    parts: [{ type: 'text' as const, text: (m.content as string) || '' }],
+    created_at: (m.created_at as string) || new Date().toISOString(),
+  }))
+}
+
+export async function syncMessagesToStore(
+  sessionId: string,
+  messages: Message[],
+): Promise<void> {
+  // Convert OV Message[] to flat rows for our SQLite store
+  const rows = messages.map((m) => {
+    const textContent = m.parts
+      .filter((p) => p.type === 'text')
+      .map((p) => (p as { text: string }).text)
+      .join('\n')
+    return {
+      id: m.id,
+      role: m.role,
+      content: textContent,
+      created_at: m.created_at,
     }
-  } finally {
-    reader.releaseLock()
-  }
+  })
+  await fetch(ourUrl(`/api/chat/sessions/${encodeURIComponent(sessionId)}/messages`), {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(rows),
+  }).catch(() => {})
 }
 
-function parseSseBlock(raw: string): StreamEvent | null {
-  let event: string | null = null
-  let data: string | null = null
-  for (const line of raw.split('\n')) {
-    if (line.startsWith('event:')) event = line.slice(6).trim()
-    else if (line.startsWith('data:')) data = (data ?? '') + line.slice(5).trim()
-  }
-  if (!event || data === null) return null
-  try {
-    const payload = JSON.parse(data) as Record<string, unknown>
-    return { type: event as StreamEvent['type'], payload } as StreamEvent
-  } catch {
-    return null
-  }
+/** vikingbot session message add (for multi-turn context). */
+export async function addMessage(
+  _sessionId: string,
+  _role: string,
+  _content?: string,
+  _parts?: string,
+): Promise<void> {
+  // vikingbot manages its own session context; this is a no-op.
 }
 
-/** Resolve relative chart paths (e.g. "/charts/foo.jpg") against the API base. */
+export function serializeParts(_parts: unknown[]): string {
+  return JSON.stringify(_parts)
+}
+
+/** Resolve relative chart paths against our FastAPI backend. */
 export function resolveChartUrl(url: string | null): string | null {
   if (!url) return null
   if (/^https?:\/\//i.test(url)) return url
-  return resolveUrl(url)
+  return `${OUR_BASE}${url}`
 }

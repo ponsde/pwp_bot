@@ -1,14 +1,55 @@
-import { useCallback, useEffect, useRef } from 'react'
-import { SparklesIcon } from 'lucide-react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
+import { CompassIcon } from 'lucide-react'
 
-import { useAskChat } from '#/routes/sessions/-hooks/use-ask-chat'
-import { Composer } from './composer'
+import { useChat } from '#/routes/sessions/-hooks/use-chat'
+import { useSessionMessages } from '#/routes/sessions/-hooks/use-sessions'
+import { useSessionTitles } from '#/routes/sessions/-hooks/use-session-titles'
+import { useFileAttachment } from '#/routes/sessions/-hooks/use-file-attachment'
 import { MessageList } from './message-list'
+import { Composer } from './composer'
 
-export function Thread() {
-  const chat = useAskChat()
+const PixelBlast = lazy(() => import('#/components/ui/pixel-blast'))
+
+interface ThreadProps {
+  sessionId: string
+}
+
+export function Thread({ sessionId }: ThreadProps) {
+  const { getTitle } = useSessionTitles()
+  const title = getTitle(sessionId)
+
+  const { data: historyMessages } = useSessionMessages(sessionId)
+
+  const chat = useChat({
+    sessionId,
+    initialMessages: historyMessages,
+    persistMessages: true,
+  })
+
   const isStreaming = chat.status === 'streaming'
 
+  // ---- File attachment ----
+  const { attachment, attach, clear: clearAttachment } = useFileAttachment()
+  const attachmentPreviewsRef = useRef<Map<string, string>>(new Map())
+
+  const handleSend = useCallback(
+    (message: string) => {
+      let text = message
+      if (attachment.phase === 'ready' && attachment.tempFileId) {
+        const prefix = `[uploaded_file: ${attachment.fileName}, temp_file_id: ${attachment.tempFileId}]`
+        text = text ? `${prefix}\n${text}` : prefix
+        // Store preview URL for this temp_file_id (survives attachment clear)
+        if (attachment.previewUrl) {
+          attachmentPreviewsRef.current.set(attachment.tempFileId, attachment.previewUrl)
+        }
+        clearAttachment()
+      }
+      if (text.trim()) chat.send(text)
+    },
+    [attachment, clearAttachment, chat],
+  )
+
+  // ---- Auto-scroll ----
   const scrollRef = useRef<HTMLDivElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const isNearBottomRef = useRef(true)
@@ -26,41 +67,84 @@ export function Thread() {
     scrollRafRef.current = requestAnimationFrame(() => {
       bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
     })
-  }, [chat.messages.length, chat.streamingStatus, chat.streamingSql])
+  }, [chat.messages.length, chat.streamingContent, chat.streamingToolCalls, chat.streamingReasoning])
+
+  const [showBackground, setShowBackground] = useState(false)
+
+  useEffect(() => {
+    const id = 'requestIdleCallback' in window
+      ? (window as unknown as { requestIdleCallback: (cb: () => void) => number }).requestIdleCallback(() => setShowBackground(true))
+      : (setTimeout(() => setShowBackground(true), 200) as unknown as number)
+    return () => {
+      if ('requestIdleCallback' in window) (window as unknown as { cancelIdleCallback: (id: number) => void }).cancelIdleCallback(id)
+      else clearTimeout(id as unknown as ReturnType<typeof setTimeout>)
+    }
+  }, [])
 
   const isEmpty = chat.messages.length === 0 && !isStreaming
 
   return (
-    <div className='relative flex h-full flex-col'>
-      <div className='relative z-10 flex h-12 items-center border-b border-border/50 bg-background/95 px-6'>
-        <SparklesIcon className='size-4 text-primary mr-2' />
-        <h2 className='text-sm font-medium truncate text-foreground'>财报智能问数</h2>
-      </div>
+    <div className="relative flex h-full w-full flex-col">
+      {/* PixelBlast background — deferred until idle */}
+      {showBackground && (
+        <div className="pointer-events-none absolute inset-0 z-0 opacity-40">
+          <Suspense fallback={null}>
+            <PixelBlast
+              color="#008bad"
+              pixelSize={1}
+              edgeFade={0.2}
+              speed={1.55}
+              enableRipples={false}
+            />
+          </Suspense>
+        </div>
+      )}
+
+      {title && (
+        <div className="relative z-10 flex h-12 items-center border-b border-border/50 bg-background/95 px-6">
+          <h2 className="text-sm font-medium truncate text-foreground">{title}</h2>
+        </div>
+      )}
 
       <div
         ref={scrollRef}
         onScroll={handleScroll}
-        className='relative z-10 flex flex-1 flex-col items-center overflow-y-auto px-4 pt-12 pb-24'
+        className="relative z-10 flex flex-1 flex-col items-center overflow-y-auto px-4 pt-12 pb-24"
       >
         {isEmpty ? (
           <ThreadEmpty />
         ) : (
           <MessageList
             messages={chat.messages}
+            attachmentPreviews={attachmentPreviewsRef.current}
             streaming={
-              isStreaming ? { status: chat.streamingStatus, sql: chat.streamingSql } : undefined
+              isStreaming
+                ? {
+                    content: chat.streamingContent,
+                    toolCalls: chat.streamingToolCalls,
+                    reasoning: chat.streamingReasoning,
+                    iteration: chat.iteration,
+                  }
+                : undefined
             }
+            onDeleteMessage={chat.deleteMessage}
+            onEditUserMessage={chat.editUserMessage}
+            onEditAssistantMessage={chat.editAssistantMessage}
+            onRetry={chat.retry}
+            isStreaming={isStreaming}
           />
         )}
         <div ref={bottomRef} />
       </div>
 
-      <div className='relative z-10'>
+      <div className="relative z-10">
         <Composer
-          onSend={chat.send}
+          onSend={handleSend}
           onCancel={chat.abort}
           isStreaming={isStreaming}
-          placeholder='请输入你的财报问题（Enter 发送，Shift+Enter 换行）'
+          attachment={attachment}
+          onAttach={attach}
+          onClearAttachment={clearAttachment}
         />
       </div>
     </div>
@@ -69,13 +153,13 @@ export function Thread() {
 
 function ThreadEmpty() {
   return (
-    <div className='flex grow flex-col items-center justify-center gap-3'>
-      <div className='flex size-14 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/15 to-primary/5 ring-1 ring-primary/10'>
-        <SparklesIcon className='size-7 text-primary/70' />
+    <div className="flex grow flex-col items-center justify-center gap-3">
+      <div className="flex size-14 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/15 to-primary/5 ring-1 ring-primary/10">
+        <CompassIcon className="size-7 text-primary/70" />
       </div>
-      <div className='text-center'>
-        <h3 className='text-base font-medium text-foreground'>财报智能问数</h3>
-        <p className='mt-1 text-sm text-muted-foreground'>
+      <div className="text-center">
+        <h3 className="text-base font-medium text-foreground">财报智能问数</h3>
+        <p className="mt-1 text-sm text-muted-foreground">
           输入问题开始，例如"华润三九 2024 年净利润同比是多少"。
         </p>
       </div>

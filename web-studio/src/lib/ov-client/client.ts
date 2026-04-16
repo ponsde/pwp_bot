@@ -252,7 +252,8 @@ export function createOvClient(options: OvClientOptions = {}): OvClientAdapter {
   }
 }
 
-const DEFAULT_LOCAL_BASE_URL = 'http://127.0.0.1:1933'
+// Embedded mode: always use same-origin (our FastAPI serves everything).
+const DEFAULT_LOCAL_BASE_URL = typeof window !== 'undefined' ? window.location.origin : '/'
 
 export const ovClient = createOvClient({
   baseUrl: ENV_BASE_URL || DEFAULT_LOCAL_BASE_URL,

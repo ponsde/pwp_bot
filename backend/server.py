@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any, Union
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Body, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -30,6 +30,7 @@ from pydantic import BaseModel, Field
 # in the OS environment.
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
+from backend import chat_store
 from src.query.answer import build_answer_content
 from src.query.chart import render_chart, safe_chart_data, select_chart_type
 from src.query.conversation import ConversationManager
@@ -71,6 +72,24 @@ class AskResponse(BaseModel):
     references: list[Reference] = Field(default_factory=list)
     needs_clarification: bool = False
     error: str | None = None
+
+
+class _ChatSessionCreate(BaseModel):
+    title: str = "新会话"
+    id: str | None = None
+
+
+class _ChatSessionPatch(BaseModel):
+    title: str
+
+
+class _ChatMessageAppend(BaseModel):
+    role: str = Field(..., pattern="^(user|assistant)$")
+    content: str
+    sql: str | None = None
+    chart_url: str | None = None
+    chart_type: str | None = None
+    needs_clarification: bool = False
 
 
 def _mask_key(value: str) -> str:
@@ -291,14 +310,39 @@ def create_app() -> FastAPI:
             rag_enabled=_is_research_engine(get_engine()),
         )
 
+    def _persist_exchange(session_id: str, question: str, response: AskResponse) -> None:
+        """Persist user question + assistant answer into the chat store.
+
+        Auto-creates the chat_sessions row on first turn, and titles it
+        with the first 20 chars of the question."""
+        try:
+            if chat_store.get_session(session_id) is None:
+                title = question.strip()[:20] or "新会话"
+                chat_store.create_session(title=title, session_id=session_id)
+            chat_store.append_message(session_id, role="user", content=question)
+            chat_store.append_message(
+                session_id,
+                role="assistant",
+                content=response.content or "",
+                sql=response.sql,
+                chart_url=response.chart_url,
+                chart_type=response.chart_type,
+                needs_clarification=response.needs_clarification,
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception("chat_store persist failed for session %s", session_id)
+
     @app.post("/api/ask", response_model=AskResponse)
     def ask(req: AskRequest) -> AskResponse:
         session_id, session = _get_or_create_session(req.session_id)
         session.conversation.add_user_message(req.question)
         engine = get_engine()
         if _is_research_engine(engine):
-            return _answer_with_research(engine, req, session_id, session)
-        return _answer_with_text2sql(engine, req, session_id, session)
+            response = _answer_with_research(engine, req, session_id, session)
+        else:
+            response = _answer_with_text2sql(engine, req, session_id, session)
+        _persist_exchange(session_id, req.question, response)
+        return response
 
     @app.post("/api/ask/stream")
     def ask_stream(req: AskRequest) -> StreamingResponse:
@@ -333,6 +377,7 @@ def create_app() -> FastAPI:
                 if response.chart_url:
                     yield _event("status", {"stage": "rendering", "message": "渲染图表…"})
 
+                _persist_exchange(session_id, req.question, response)
                 yield _event("done", response.model_dump())
             except Exception as exc:  # noqa: BLE001
                 logger.exception("ask_stream failed")
@@ -346,6 +391,84 @@ def create_app() -> FastAPI:
                 "X-Accel-Buffering": "no",  # disable nginx/proxy buffering
             },
         )
+
+    # ------------------------------------------------------------------
+    # Persistent chat sessions (web UI session list)
+    # ------------------------------------------------------------------
+    chat_store.init_db()
+
+    @app.get("/api/chat/sessions")
+    def list_chat_sessions() -> dict[str, Any]:
+        return {"sessions": [chat_store.session_to_dict(s) for s in chat_store.list_sessions()]}
+
+    @app.post("/api/chat/sessions")
+    def create_chat_session(
+        req: _ChatSessionCreate = Body(default_factory=_ChatSessionCreate),
+    ) -> dict[str, Any]:
+        s = chat_store.create_session(title=req.title, session_id=req.id)
+        return chat_store.session_to_dict(s)
+
+    @app.patch("/api/chat/sessions/{session_id}")
+    def rename_chat_session(session_id: str, req: _ChatSessionPatch = Body(...)) -> dict[str, Any]:
+        s = chat_store.rename_session(session_id, req.title)
+        if s is None:
+            raise HTTPException(status_code=404, detail="session not found")
+        return chat_store.session_to_dict(s)
+
+    @app.delete("/api/chat/sessions/{session_id}")
+    def delete_chat_session(session_id: str) -> dict[str, bool]:
+        ok = chat_store.delete_session(session_id)
+        _sessions.pop(session_id, None)
+        return {"ok": ok}
+
+    @app.get("/api/chat/sessions/{session_id}/messages")
+    def list_chat_messages(session_id: str) -> dict[str, Any]:
+        if chat_store.get_session(session_id) is None:
+            raise HTTPException(status_code=404, detail="session not found")
+        messages = chat_store.list_messages(session_id)
+        return {"messages": [chat_store.message_to_dict(m) for m in messages]}
+
+    @app.post("/api/chat/sessions/{session_id}/messages")
+    def append_chat_message(
+        session_id: str, req: _ChatMessageAppend = Body(...),
+    ) -> dict[str, Any]:
+        if chat_store.get_session(session_id) is None:
+            raise HTTPException(status_code=404, detail="session not found")
+        msg = chat_store.append_message(
+            session_id,
+            role=req.role,
+            content=req.content,
+            sql=req.sql,
+            chart_url=req.chart_url,
+            chart_type=req.chart_type,
+            needs_clarification=req.needs_clarification,
+        )
+        return chat_store.message_to_dict(msg)
+
+    @app.put("/api/chat/sessions/{session_id}/messages")
+    def replace_chat_messages(
+        session_id: str, messages: list[dict[str, Any]] = Body(...),
+    ) -> dict[str, bool]:
+        """Replace all messages for a session (used by frontend after edit/delete)."""
+        session = chat_store.get_session(session_id)
+        if session is None:
+            # Auto-title from the first user message
+            title = "新会话"
+            for m in messages:
+                if m.get("role") == "user" and m.get("content"):
+                    text = str(m["content"]).strip()
+                    title = text[:20] + ("…" if len(text) > 20 else "")
+                    break
+            chat_store.create_session(session_id=session_id, title=title)
+        elif session.title == "新会话":
+            # Rename if still default
+            for m in messages:
+                if m.get("role") == "user" and m.get("content"):
+                    text = str(m["content"]).strip()
+                    chat_store.rename_session(session_id, text[:20] + ("…" if len(text) > 20 else ""))
+                    break
+        chat_store.replace_messages(session_id, messages)
+        return {"ok": True}
 
     @app.post("/api/v1/resources/temp_upload")
     async def resources_temp_upload(
@@ -595,6 +718,84 @@ def create_app() -> FastAPI:
 
         return {"status": "ok", "changed": changed}
 
+    # ------------------------------------------------------------------
+    # OV dashboard stubs — so the Home page renders instead of skeleton
+    # ------------------------------------------------------------------
+
+    @app.get("/api/v1/observer/system")
+    def observer_system() -> dict[str, Any]:
+        """Real health checks for each component in our architecture."""
+        components: dict[str, dict[str, Any]] = {}
+
+        # 数据库 — SQLite finance.db
+        try:
+            with sqlite3.connect(DB_PATH) as conn:
+                row = conn.execute(
+                    "SELECT COUNT(DISTINCT stock_code) FROM core_performance_indicators_sheet"
+                ).fetchone()
+            components["database"] = {"is_healthy": True, "companies": row[0] if row else 0}
+        except Exception as exc:
+            components["database"] = {"is_healthy": False, "error": str(exc)}
+
+        # LLM — API 可用
+        try:
+            from src.llm.client import LLMClient
+            llm = LLMClient.from_env()
+            components["llm"] = {"is_healthy": True, "model": llm.model}
+        except Exception as exc:
+            components["llm"] = {"is_healthy": False, "error": str(exc)}
+
+        # VikingBot — 聊天 Agent 网关
+        try:
+            import urllib.request
+            req = urllib.request.Request("http://localhost:18790/bot/v1/health", method="GET")
+            with urllib.request.urlopen(req, timeout=3) as resp:
+                components["vikingbot"] = {"is_healthy": resp.status == 200}
+        except Exception as exc:
+            components["vikingbot"] = {"is_healthy": False, "error": str(exc)}
+
+        # OpenViking — 上下文数据库（由 vikingbot 内部管理，
+        # 我们不另开客户端避免 LevelDB 锁冲突。vikingbot 在就说明 OV 在）
+        components["openviking"] = components.get("vikingbot", {"is_healthy": False})
+
+        # MCP — 财报工具（vikingbot 启动时注册，vikingbot 在就在）
+        components["mcp"] = components.get("vikingbot", {"is_healthy": False})
+
+        all_healthy = all(c.get("is_healthy") for c in components.values())
+        return _ov_ok({"is_healthy": all_healthy, "components": components})
+
+    @app.get("/api/v1/stats/memories")
+    def stats_memories() -> dict[str, Any]:
+        # OV memory stats not accessible from this process (vikingbot holds the lock).
+        # TODO: proxy via vikingbot API when it exposes this.
+        return _ov_ok({"total_memories": 0, "by_type": {}})
+
+    @app.get("/api/v1/debug/vector/count")
+    def debug_vector_count() -> dict[str, Any]:
+        # Same — vector count lives in vikingbot's OV instance.
+        return _ov_ok({"count": 0})
+
+    @app.get("/api/v1/tasks")
+    def list_tasks() -> dict[str, Any]:
+        return _ov_ok([])
+
+    @app.get("/api/v1/sessions")
+    def list_ov_sessions() -> dict[str, Any]:
+        # Return our chat sessions so the dashboard shows them
+        sessions_list = chat_store.list_sessions()
+        return _ov_ok([
+            {"session_id": s.id, "uri": f"/sessions/{s.id}", "is_dir": False}
+            for s in sessions_list
+        ])
+
+    @app.get("/api/v1/stats/tokens")
+    def stats_tokens() -> dict[str, Any]:
+        return {
+            "total_tokens": 0,
+            "llm": {"total_tokens": 0, "prompt_tokens": 0, "completion_tokens": 0},
+            "embedding": {"total_tokens": 0},
+        }
+
     @app.get("/api/v1/system/status")
     def system_status() -> dict[str, Any]:
         """Satisfies the vendored Home dashboard's /api/v1/system/status call.
@@ -602,17 +803,8 @@ def create_app() -> FastAPI:
         Returns whatever OV's ``get_status`` emits, plus our own fields
         (db stats + rag_enabled) so the Home page can show something
         taidi-specific."""
-        client = _require_ov()
-        try:
-            ov_status = client.get_status()
-            if hasattr(ov_status, "model_dump"):
-                ov_status = ov_status.model_dump()
-            elif hasattr(ov_status, "__dict__"):
-                ov_status = dict(ov_status.__dict__)
-        except Exception as exc:  # noqa: BLE001
-            logger.exception("system.status failed")
-            ov_status = {"error": str(exc)}
-
+        # Don't open OV client here (vikingbot holds the LevelDB lock).
+        # Just check what we CAN check from this process.
         try:
             with sqlite3.connect(DB_PATH) as conn:
                 db_stats = conn.execute(
@@ -620,23 +812,73 @@ def create_app() -> FastAPI:
                     "FROM core_performance_indicators_sheet"
                 ).fetchone()
             companies, periods, latest = db_stats or (0, 0, None)
+            db_ok = True
         except Exception:  # noqa: BLE001
             companies, periods, latest = 0, 0, None
+            db_ok = False
+
+        # Check vikingbot alive → implies OV is initialized
+        try:
+            import urllib.request
+            with urllib.request.urlopen("http://localhost:18790/bot/v1/health", timeout=2) as r:
+                vb_ok = r.status == 200
+        except Exception:
+            vb_ok = False
 
         return _ov_ok({
-            "ov": ov_status,
+            "initialized": db_ok and vb_ok,
             "taidi": {
                 "company_count": companies or 0,
                 "report_period_count": periods or 0,
                 "latest_period": latest,
                 "db_path": DB_PATH,
-                "rag_enabled": True,
+                "rag_enabled": vb_ok,
             },
             "user_id": "embedded",
         })
 
     CHART_DIR.mkdir(parents=True, exist_ok=True)
     app.mount("/charts", StaticFiles(directory=str(CHART_DIR)), name="charts")
+
+    # ------------------------------------------------------------------
+    # Reverse proxy: /bot/v1/* → vikingbot gateway (like OV server does)
+    # ------------------------------------------------------------------
+    import httpx
+
+    VIKINGBOT_URL = os.getenv("VIKINGBOT_URL", "http://localhost:18790")
+    _proxy_client = httpx.AsyncClient(base_url=VIKINGBOT_URL, timeout=300.0)
+
+    @app.api_route("/bot/v1/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
+    async def bot_proxy(path: str, request: Request) -> StreamingResponse:
+        """Reverse-proxy /bot/v1/* to vikingbot gateway."""
+        url = f"/bot/v1/{path}"
+        headers = dict(request.headers)
+        headers.pop("host", None)
+        body = await request.body()
+
+        req = _proxy_client.build_request(
+            method=request.method,
+            url=url,
+            headers=headers,
+            content=body,
+            params=dict(request.query_params),
+        )
+        resp = await _proxy_client.send(req, stream=True)
+
+        async def stream_body():
+            async for chunk in resp.aiter_bytes():
+                yield chunk
+            await resp.aclose()
+
+        return StreamingResponse(
+            stream_body(),
+            status_code=resp.status_code,
+            headers={
+                k: v for k, v in resp.headers.items()
+                if k.lower() not in ("transfer-encoding", "content-encoding", "content-length")
+            },
+            media_type=resp.headers.get("content-type"),
+        )
 
     if WEB_DIST_DIR.is_dir():
         assets = WEB_DIST_DIR / "assets"
