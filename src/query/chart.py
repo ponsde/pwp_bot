@@ -324,14 +324,31 @@ def render_chart(
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    labels = [str(row.get("label", idx)) for idx, row in enumerate(rows, start=1)]
-    raw_values = [float(row.get("value", 0) or 0) for row in rows]
+    # Drop rows whose value is effectively 0 — they clutter the chart with
+    # "0.00亿元" labels when the underlying SQL returned NULL (safe_chart_data
+    # coerces NULL/missing fields to 0.0). Keep at least one row so the
+    # render doesn't error on empty input.
+    filtered = [(str(row.get("label", idx)), float(row.get("value", 0) or 0))
+                for idx, row in enumerate(rows, start=1)]
+    kept = [(l, v) for (l, v) in filtered if abs(v) >= 1e-6]
+    if not kept:
+        kept = filtered[:1]
+    labels = [l for (l, _) in kept]
+    raw_values = [v for (_, v) in kept]
 
     base_unit = _FIELD_UNITS.get(value_field or "", "")
     divisor, unit_label = _detect_unit_scale(raw_values, base_unit)
     values = [v / divisor for v in raw_values]
 
-    fig, ax = plt.subplots(figsize=(9, 5.4))
+    # Dynamic figure size: wider (& taller for >20) when there are many bars
+    # so labels have room to breathe. Keep a floor of 9 inches.
+    n = len(labels)
+    if chart_type == "bar" and n > 15:
+        fig_w = min(18, max(9, 9 + (n - 15) * 0.45))
+        fig_h = 6.2
+    else:
+        fig_w, fig_h = 9, 5.4
+    fig, ax = plt.subplots(figsize=(fig_w, fig_h))
     # Best-effort — tests mock subplots with a minimal fake object.
     if hasattr(fig, "set_facecolor"):
         fig.set_facecolor("white")
@@ -393,17 +410,38 @@ def render_chart(
             # 3+ bars: mostly the primary accent, so the data stands out —
             # variation from gradient + spacing rather than rainbow colors.
             colors = [_ACCENT] * len(values)
+        # Bar width + label strategy scales with density:
+        #   ≤12: full width, always show value labels
+        #   13-20: thinner bars, label every bar but smaller font
+        #   >20: narrow bars, label only top/bottom outliers + every 3rd bar
+        n = len(labels)
+        if n <= 12:
+            bar_width = 0.58
+            label_fontsize = 10
+            show_label_on = lambda _i, _v, _maxv: True  # noqa: E731
+        elif n <= 20:
+            bar_width = 0.74
+            label_fontsize = 8.5
+            show_label_on = lambda _i, _v, _maxv: True  # noqa: E731
+        else:
+            bar_width = 0.82
+            label_fontsize = 8
+            # Rank by magnitude; label top 5 + bottom 5 + every 4th bar
+            order = sorted(range(n), key=lambda i: -abs(values[i]))
+            label_set = set(order[:5]) | set(order[-5:]) | {i for i in range(n) if i % 4 == 0}
+            show_label_on = lambda i, _v, _maxv: i in label_set  # noqa: E731
         try:
             bars = ax.bar(labels, values, color=colors,
-                          edgecolor="white", linewidth=1.2,
-                          width=0.58, zorder=3)
+                          edgecolor="white", linewidth=0.8 if n > 15 else 1.2,
+                          width=bar_width, zorder=3)
         except TypeError:
             bars = ax.bar(labels, values, color=colors[0] if colors else _ACCENT)
         # Thin lighter cap at the top of each bar — gives subtle depth
         # without overwhelming the color. Skipped for signed bars where the
-        # cap could confuse the sign direction.
+        # cap could confuse the sign direction, and for dense bars where the
+        # cap adds visual noise instead of depth.
         try:
-            if not has_sign:
+            if not has_sign and n <= 15:
                 from matplotlib.colors import to_rgb
                 for bar, c in zip(bars, colors):
                     h = bar.get_height()
@@ -421,15 +459,19 @@ def render_chart(
                     )
         except Exception:
             pass
-        for bar, v in zip(bars, values):
+        spread = (max(values) - min(values)) or abs(max(values, key=abs)) or 1
+        for i, (bar, v) in enumerate(zip(bars, values)):
+            if not show_label_on(i, v, max(abs(x) for x in values) or 1):
+                continue
             y_text = bar.get_height()
             va = "bottom" if y_text >= 0 else "top"
-            offset = 0.015 * (max(values) - min(values) or abs(max(values, key=abs)) or 1)
+            offset = 0.015 * spread
             ax.text(
                 bar.get_x() + bar.get_width() / 2,
                 y_text + (offset if y_text >= 0 else -offset),
                 f"{v:,.2f}{unit_label}",
-                ha="center", va=va, fontsize=10, color=_TEXT_COLOR, fontweight="bold", zorder=5,
+                ha="center", va=va, fontsize=label_fontsize, color=_TEXT_COLOR,
+                fontweight="bold", zorder=5,
             )
         if has_sign:
             _safe_call(ax, "axhline", 0, color=_SUBTLE_TEXT, linewidth=0.9, alpha=0.5)
