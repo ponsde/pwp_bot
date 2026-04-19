@@ -358,11 +358,19 @@ class ResearchQAEngine:
 
 
 def format_research_answer_payload(answer: ResearchAnswer) -> str:
+    """Build one turn's JSON per 附件7 表5 structure.
+
+    Shape: {"Q": <question>, "A": {"content": <text>, "image": [], "references": [...]}}
+    Image is populated later by the caller once a chart is rendered.
+    """
     return json.dumps({
         "Q": answer.question,
-        "A": answer.answer,
-        "references": [
-            {"paper_path": ref.paper_path, "text": ref.text, "paper_image": ref.paper_image}
-            for ref in answer.references
-        ],
+        "A": {
+            "content": answer.answer,
+            "image": [],
+            "references": [
+                {"paper_path": ref.paper_path, "text": ref.text, "paper_image": ref.paper_image}
+                for ref in answer.references
+            ],
+        },
     }, ensure_ascii=False)

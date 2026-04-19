@@ -100,5 +100,11 @@ class LLMClient:
                 pass
         match = JSON_INLINE_RE.search(text)
         if match:
-            return json.loads(match.group(1))
-        raise ValueError(f"No JSON object found in response: {content[:300]}")
+            try:
+                return json.loads(match.group(1))
+            except json.JSONDecodeError:
+                pass
+        # All parses failed — raise a uniform ValueError so callers (who wrap
+        # LLM calls in try/except ValueError) can degrade gracefully rather
+        # than crash the whole pipeline on a single malformed reply.
+        raise ValueError(f"No valid JSON in response: {content[:300]}")

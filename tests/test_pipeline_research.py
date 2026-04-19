@@ -51,6 +51,7 @@ def test_pipeline_research_end_to_end(tmp_path: Path, monkeypatch):
     result_df = pd.read_excel(output)
     payload = json.loads(result_df.loc[0, '回答'])
     assert output.exists()
-    assert payload[0]['references'][0]['paper_path'] == './附件5：研报数据/个股研报/paper.pdf'
-    assert result_df.loc[0, '图形格式'] == 'bar'
-    assert Path(payload[0]['image'][0]).exists()
+    # Per 附件7 表5, references/image live inside A, not at the payload top level
+    assert payload[0]['A']['references'][0]['paper_path'] == './附件5：研报数据/个股研报/paper.pdf'
+    assert list(result_df.columns) == ['编号', '问题', 'SQL查询语法', '回答']
+    assert Path(payload[0]['A']['image'][0]).exists()

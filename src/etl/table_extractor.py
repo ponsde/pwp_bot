@@ -642,13 +642,17 @@ class TableExtractor:
     ) -> list[tuple[int, str]]:
         if period_key == "FY":
             return numeric_cells[:1] if numeric_cells else []
+        def _header_cell(idx: int) -> str:
+            if 0 <= idx < len(header):
+                return header[idx] or ""
+            return ""
         if period_key == "Q3":
             ytd_tokens = ("年初至报告期末", "年初至报", "报告期末")
-            filtered = [item for item in numeric_cells if any(token in (header[item[0]] or "") for token in ytd_tokens)]
+            filtered = [item for item in numeric_cells if any(token in _header_cell(item[0]) for token in ytd_tokens)]
             if filtered:
                 return filtered
         current_tokens = ("本报告期", "本期", "本报告期末", "期末")
-        filtered = [item for item in numeric_cells if any(token in (header[item[0]] or "") for token in current_tokens)]
+        filtered = [item for item in numeric_cells if any(token in _header_cell(item[0]) for token in current_tokens)]
         if filtered:
             return filtered
         if period_key in {"Q1", "HY"} and numeric_cells:

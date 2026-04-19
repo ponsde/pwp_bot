@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from pathlib import Path
 from typing import Sequence
 
@@ -174,6 +175,142 @@ def _detect_unit_scale(values: Sequence[float], base_unit: str = "") -> tuple[fl
     return 1.0, ""
 
 
+_PALETTE = [
+    "#2B5BA8", "#E68A2E", "#3C9B83", "#C74A53", "#7A6BC0",
+    "#D17A3F", "#2F878A", "#B75AA0", "#8F9A3A", "#4B5EB2",
+]
+_ACCENT = "#1F3A6E"        # deep navy
+_ACCENT_LIGHT = "#A4B9DE"  # light navy for area fills
+_POS_COLOR = "#2F8F6A"     # deeper green
+_NEG_COLOR = "#B83A45"     # deeper red
+_GRID_COLOR = "#E8ECF4"
+_TEXT_COLOR = "#1F2A44"
+_SUBTLE_TEXT = "#5B6B85"
+
+
+def _humanize_title(raw: str) -> str:
+    """Turn a raw user question into a concise chart title.
+
+    Purely heuristic — strips trailing interrogative particles, common
+    command fragments (『做可视化绘图』『画图』『用图表』), and extra
+    whitespace. Keeps subject/metric/period. Deterministic so batch runs
+    reproduce.
+    """
+    s = re.sub(r"\s+", "", raw or "")
+    # Drop common command tails / question particles
+    for tail in ("是什么样的", "请做可视化绘图", "做可视化绘图", "做可视化",
+                 "请绘制", "请绘图", "请画图", "画个图", "画图",
+                 "请用图表展示", "用图表展示", "用图展示", "用图",
+                 "是怎样的", "是什么", "如何", "请问", "请告诉我", "请列出"):
+        if s.endswith(tail):
+            s = s[: -len(tail)]
+    # Drop trailing 。 ？ ? ! ！
+    s = re.sub(r"[。？?！!，,、：:；;\s]+$", "", s)
+    if not s:
+        s = raw
+    return s
+
+
+def _fit_title(ax, text: str, max_width_ratio: float = 0.94, initial_fontsize: float = 14.5,
+               min_fontsize: float = 9.0, color=None, pad: int = 18) -> None:
+    """Set the Axes title with auto-shrink font so it fits in the figure width.
+
+    Tries initial_fontsize first; if the rendered text width exceeds
+    ``max_width_ratio`` of the figure width, reduces fontsize until it fits
+    or hits ``min_fontsize``. No '…' truncation.
+    """
+    if color is None:
+        color = _TEXT_COLOR
+    fig = getattr(ax, "figure", None)
+    if not hasattr(ax, "set_title") or fig is None:
+        try:
+            ax.set_title(text, fontsize=initial_fontsize, fontweight="bold",
+                         color=color, pad=pad, loc="left")
+        except Exception:
+            pass
+        return
+    size = initial_fontsize
+    while size >= min_fontsize:
+        ax.set_title(text, fontsize=size, fontweight="bold", color=color,
+                     pad=pad, loc="left")
+        try:
+            fig.canvas.draw()
+            title_artist = ax.title
+            bbox = title_artist.get_window_extent(fig.canvas.get_renderer())
+            fig_width_px = fig.get_figwidth() * fig.dpi
+            if bbox.width <= fig_width_px * max_width_ratio:
+                return
+        except Exception:
+            # Can't measure (headless / test mocks) — accept current size
+            return
+        size -= 0.5
+    # Leave at min size if still too long; at this point it's readable.
+
+
+def _apply_common_style(ax, chart_type: str) -> None:
+    # Polished editorial look: thinner spines, muted grid, quiet tick style.
+    # Each call is guarded against missing methods so the minimal test mocks
+    # (see tests/test_chart.py::FakeAxes) continue to work.
+    try:
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        ax.spines["left"].set_color(_GRID_COLOR)
+        ax.spines["left"].set_linewidth(0.8)
+        ax.spines["bottom"].set_color(_GRID_COLOR)
+        ax.spines["bottom"].set_linewidth(0.8)
+    except Exception:
+        pass
+    try:
+        ax.tick_params(axis="both", colors=_SUBTLE_TEXT, labelsize=10, length=0)
+    except TypeError:
+        pass
+    if chart_type != "pie" and hasattr(ax, "grid"):
+        try:
+            ax.grid(axis="y", color=_GRID_COLOR, linestyle="-", linewidth=0.9, alpha=1.0, zorder=0)
+            ax.set_axisbelow(True)
+        except Exception:
+            pass
+
+
+def _gradient_fill_bar(ax, bars, color: str, alpha_top: float = 1.0, alpha_bottom: float = 0.55):
+    """Overlay a vertical gradient on each bar for depth.
+
+    Uses imshow with a 2-stop linear gradient clipped to the bar's bbox."""
+    import numpy as np
+    from matplotlib.patches import Rectangle
+    from matplotlib.colors import LinearSegmentedColormap
+    try:
+        cmap = LinearSegmentedColormap.from_list("grad", [
+            (1.0, color),
+            (0.0, color),
+        ])
+        for bar in bars:
+            x, y = bar.get_xy()
+            w, h = bar.get_width(), bar.get_height()
+            # Draw a semi-transparent gradient rectangle on top of the bar.
+            gradient = np.linspace(alpha_top, alpha_bottom, 100).reshape(-1, 1)
+            extent = (x, x + w, y, y + h) if h >= 0 else (x, x + w, y + h, y)
+            ax.imshow(
+                gradient, aspect="auto", extent=extent,
+                cmap=cmap, alpha=1.0, zorder=3,
+                origin="lower" if h >= 0 else "upper",
+                interpolation="bilinear",
+            )
+    except Exception:
+        # Gradient is eye candy; keep base bars if anything fails.
+        pass
+
+
+def _safe_call(obj, attr, *args, **kwargs):
+    method = getattr(obj, attr, None)
+    if method is None:
+        return None
+    try:
+        return method(*args, **kwargs)
+    except Exception:
+        return None
+
+
 def render_chart(
     chart_type: str,
     rows: Sequence[dict],
@@ -194,23 +331,128 @@ def render_chart(
     divisor, unit_label = _detect_unit_scale(raw_values, base_unit)
     values = [v / divisor for v in raw_values]
 
-    fig, ax = plt.subplots(figsize=(8, 5))
+    fig, ax = plt.subplots(figsize=(9, 5.4))
+    # Best-effort — tests mock subplots with a minimal fake object.
+    if hasattr(fig, "set_facecolor"):
+        fig.set_facecolor("white")
+    if hasattr(ax, "set_facecolor"):
+        ax.set_facecolor("#FBFBFB")
+
     if chart_type == "line":
-        ax.plot(labels, values, marker="o", linewidth=2)
-        for i, v in enumerate(values):
-            ax.annotate(f"{v:,.2f}{unit_label}", (labels[i], v), textcoords="offset points", xytext=(0, 8), ha="center", fontsize=8)
+        ax.plot(
+            labels, values,
+            color=_ACCENT, linewidth=2.8,
+            marker="o", markersize=9, markerfacecolor="white",
+            markeredgecolor=_ACCENT, markeredgewidth=2.4,
+            zorder=3, solid_capstyle="round",
+        )
+        # Gradient-ish area under curve
+        _safe_call(ax, "fill_between", range(len(labels)), values, 0, color=_ACCENT, alpha=0.12, zorder=2)
+        # Zero reference if data crosses zero
+        if min(values) < 0 < max(values):
+            _safe_call(ax, "axhline", 0, color=_SUBTLE_TEXT, linewidth=1.0, linestyle="-", alpha=0.35, zorder=1)
+        if hasattr(ax, "annotate"):
+            for i, v in enumerate(values):
+                ax.annotate(
+                    f"{v:,.2f}{unit_label}",
+                    (i, v),
+                    textcoords="offset points", xytext=(0, 14),
+                    ha="center", fontsize=9.5, color=_TEXT_COLOR, fontweight="bold",
+                    bbox=dict(boxstyle="round,pad=0.32", facecolor="white",
+                              edgecolor=_ACCENT_LIGHT, linewidth=0.8, alpha=0.95),
+                )
+        else:
+            for i, v in enumerate(values):
+                _safe_call(ax, "text", i, v, f"{v:,.2f}{unit_label}")
+        _safe_call(ax, "margins", x=0.06, y=0.22)
     elif chart_type == "pie":
-        ax.pie(raw_values, labels=labels, autopct="%1.1f%%", startangle=90)
-    else:
-        bars = ax.bar(labels, values, color="#4C8BF5")
+        colors = [_PALETTE[i % len(_PALETTE)] for i in range(len(labels))]
+        wedges, texts, autotexts = ax.pie(
+            raw_values,
+            labels=labels,
+            autopct=lambda pct: f"{pct:.1f}%" if pct > 3 else "",
+            startangle=90,
+            colors=colors,
+            wedgeprops=dict(edgecolor="white", linewidth=1.5),
+            textprops=dict(fontsize=10, color="#333"),
+        )
+        for at in autotexts:
+            at.set_color("white")
+            at.set_fontweight("bold")
+        _safe_call(ax, "axis", "equal")
+    else:  # bar
+        # Color bars: +/- distinct for signed data; mostly a single accent so
+        # the chart reads as "one story" rather than a rainbow.
+        has_sign = any(v < 0 for v in values)
+        if has_sign:
+            colors = [_POS_COLOR if v >= 0 else _NEG_COLOR for v in values]
+        elif len(values) <= 2:
+            # For true comparison (2 bars) use primary + secondary accent
+            colors = [_ACCENT, _PALETTE[1]]
+        else:
+            # 3+ bars: mostly the primary accent, so the data stands out —
+            # variation from gradient + spacing rather than rainbow colors.
+            colors = [_ACCENT] * len(values)
+        try:
+            bars = ax.bar(labels, values, color=colors,
+                          edgecolor="white", linewidth=1.2,
+                          width=0.58, zorder=3)
+        except TypeError:
+            bars = ax.bar(labels, values, color=colors[0] if colors else _ACCENT)
+        # Thin lighter cap at the top of each bar — gives subtle depth
+        # without overwhelming the color. Skipped for signed bars where the
+        # cap could confuse the sign direction.
+        try:
+            if not has_sign:
+                from matplotlib.colors import to_rgb
+                for bar, c in zip(bars, colors):
+                    h = bar.get_height()
+                    if h <= 0:
+                        continue
+                    rgb = to_rgb(c)
+                    rgb_light = tuple(min(1.0, ch * 1.3 + 0.08) for ch in rgb)
+                    cap_height = h * 0.035
+                    ax.bar(
+                        bar.get_x() + bar.get_width() / 2,
+                        cap_height,
+                        width=bar.get_width(), bottom=h - cap_height,
+                        color=rgb_light, edgecolor="none", zorder=3.5,
+                        align="center",
+                    )
+        except Exception:
+            pass
         for bar, v in zip(bars, values):
-            ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height(), f"{v:,.2f}{unit_label}", ha="center", va="bottom", fontsize=8)
-    ax.set_title(title, fontsize=12)
+            y_text = bar.get_height()
+            va = "bottom" if y_text >= 0 else "top"
+            offset = 0.015 * (max(values) - min(values) or abs(max(values, key=abs)) or 1)
+            ax.text(
+                bar.get_x() + bar.get_width() / 2,
+                y_text + (offset if y_text >= 0 else -offset),
+                f"{v:,.2f}{unit_label}",
+                ha="center", va=va, fontsize=10, color=_TEXT_COLOR, fontweight="bold", zorder=5,
+            )
+        if has_sign:
+            _safe_call(ax, "axhline", 0, color=_SUBTLE_TEXT, linewidth=0.9, alpha=0.5)
+
+    _apply_common_style(ax, chart_type)
+    _fit_title(ax, _humanize_title(title))
     if chart_type != "pie":
-        ax.tick_params(axis="x", rotation=30)
-        if unit_label:
-            ax.set_ylabel(unit_label)
+        # Rotate long labels for readability
+        try:
+            if max(len(s) for s in labels) > 6:
+                ax.tick_params(axis="x", rotation=22)
+                plt.setp(ax.get_xticklabels(), ha="right")
+        except Exception:
+            pass
+        ylabel_text = f"单位：{unit_label}" if unit_label else ("单位：%" if value_field and "ratio" in (value_field or "") else "")
+        if ylabel_text:
+            ax.set_ylabel(ylabel_text, fontsize=10, color=_SUBTLE_TEXT, labelpad=8)
+
     fig.tight_layout()
-    fig.savefig(path, format="jpg", dpi=150)
+    try:
+        fig.savefig(path, format="jpg", dpi=150, facecolor="white", bbox_inches="tight")
+    except TypeError:
+        # Tests pass a minimal FakeFigure.savefig(path, format, dpi).
+        fig.savefig(path, format="jpg", dpi=150)
     plt.close(fig)
     return str(path)

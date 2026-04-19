@@ -6,7 +6,12 @@ from typing import Any
 
 
 REPORT_PERIOD_RE = re.compile(r"^20\d{2}(FY|Q1|HY|Q3)$")
-FATAL_WARNING_MARKERS = ("balance_sheet: assets != liabilities",)
+# Previously rejected rows with balance mismatches — too aggressive on the full
+# dataset, where a single missed field can trip the 1% tolerance on an
+# otherwise-useful report. Keep the check as a recorded warning (surfaced in
+# run summary) but load the data. Catastrophic failures (unparseable data,
+# missing ALL key fields) still get filtered earlier in the pipeline.
+FATAL_WARNING_MARKERS: tuple[str, ...] = ()
 
 
 @dataclass

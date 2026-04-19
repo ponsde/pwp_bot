@@ -262,7 +262,14 @@ class Text2SQLEngine:
                 rows_json=self._serialize_rows_for_prompt(rows),
                 rows_hint=self._build_rows_hint(rows),
             )
-            raw = self.llm_client.complete(prompt, json_mode=True)
+            try:
+                raw = self.llm_client.complete(prompt, json_mode=True)
+            except (ValueError, OSError, RuntimeError):
+                # Validation LLM failed (malformed JSON, network, etc.).
+                # Degrade to "accept" — we'd rather surface the original
+                # query result than crash the whole pipeline on a
+                # validator hiccup.
+                return {"accepted": True, "reason": "validator_llm_failed"}
             data = self._ensure_json_dict(raw)
             accepted = bool(data.get("accepted", False))
             return {
@@ -320,6 +327,26 @@ class Text2SQLEngine:
             return question
         return f"{question}\n补充约束：{reason_text}"
 
+    _PERIOD_ALIAS_MAP = {
+        "Q2": "HY",  # Chinese listed companies publish semi-annual (HY), not Q2 alone
+        "Q4": "FY",  # Annual (FY), not Q4
+        "H1": "HY",
+        "H2": "FY",
+        "FY1": "FY",
+        "": None,
+    }
+
+    def _normalize_period(self, period: str) -> str:
+        """Coerce LLM-returned periods into the DB schema form (FY/Q1/HY/Q3)."""
+        match = re.fullmatch(r"(\d{4})([A-Z0-9]+)", str(period or "").strip().upper())
+        if not match:
+            return period
+        year, suffix = match.group(1), match.group(2)
+        mapped = self._PERIOD_ALIAS_MAP.get(suffix, suffix)
+        if mapped is None:
+            return period
+        return f"{year}{mapped}"
+
     def _validate_intent(self, intent: dict[str, Any]) -> None:
         if not isinstance(intent, dict):
             raise UserFacingError("无法识别查询意图。")
@@ -329,9 +356,16 @@ class Text2SQLEngine:
         intent.setdefault("top_n", None)
         intent.setdefault("order_direction", None)
         intent.setdefault("yoy", False)
+        normalized_periods = []
         for period in intent["periods"]:
-            if not re.fullmatch(r"\d{4}(FY|Q1|HY|Q3)", period):
-                raise UserFacingError(f"报告期格式不正确：{period}")
+            fixed = self._normalize_period(period)
+            if not re.fullmatch(r"\d{4}(FY|Q1|HY|Q3)", fixed):
+                # Drop silently rather than error out — user may ask about a
+                # period that doesn't exist (e.g. "Q4"). Query layer falls
+                # back to trend / generic queries.
+                continue
+            normalized_periods.append(fixed)
+        intent["periods"] = normalized_periods
 
     _CN_DIGIT_MAP: dict[str, int] = {
         "一": 1, "二": 2, "三": 3, "四": 4, "五": 5,

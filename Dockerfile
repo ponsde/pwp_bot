@@ -53,7 +53,6 @@ INTERNAL_BOT_KEY="embedded-same-origin-$(head -c 16 /dev/urandom | base64)"
 mkdir -p /root/.openviking
 cat > /root/.openviking/ov.conf <<CONF
 {
-  "storage": {"agfs": {"port": 1834}},
   "embedding": {
     "dense": {
       "api_base": "${OV_EMBEDDING_API_BASE}",

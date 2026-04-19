@@ -88,7 +88,8 @@ def _render_chart(question: str, rows: list[dict]) -> tuple[str | None, str | No
     import uuid as _uuid
 
     request_id = _uuid.uuid4().hex[:8]
-    chart_url = render_chart(chart_data, chart_type, request_id)
+    output_path = f"result/mcp_{request_id}.jpg"
+    chart_url = render_chart(chart_type, chart_data, output_path, title=question)
     if chart_url:
         chart_url = f"/charts/{Path(chart_url).name}"
     return chart_url, chart_type

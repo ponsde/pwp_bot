@@ -111,7 +111,22 @@ def run_research(questions_path: str, db_path: str, output_xlsx: str) -> str:
             chart_image: str | None = None
             question = turn["Q"]
             conversation.add_user_message(question)
-            answer = engine.answer_question(question, conversation)
+            try:
+                answer = engine.answer_question(question, conversation)
+            except Exception as exc:
+                # Per-question resilience: one failing question should not
+                # drop the remaining 93. Record the error and move on.
+                logger.exception("research question %s turn %d failed", item["id"], turn_index)
+                answer_payloads.append({
+                    "Q": question,
+                    "A": {
+                        "content": f"查询失败：{type(exc).__name__}: {str(exc)[:200]}",
+                        "image": [],
+                        "references": [],
+                    },
+                })
+                conversation.add_assistant_message("（查询失败）")
+                continue
             if answer.sql:
                 sql_parts.append(answer.sql)
             if answer.chart_type and answer.chart_type != "无":
@@ -128,14 +143,15 @@ def run_research(questions_path: str, db_path: str, output_xlsx: str) -> str:
                     ) if chart_data else None
             answer_payload = json.loads(format_research_answer_payload(answer))
             if chart_image:
-                answer_payload.setdefault("image", [chart_image])
+                answer_payload["A"].setdefault("image", [])
+                if chart_image not in answer_payload["A"]["image"]:
+                    answer_payload["A"]["image"].append(chart_image)
             answer_payloads.append(answer_payload)
             conversation.add_assistant_message(answer.answer)
         rows.append({
             "编号": item["id"],
             "问题": json.dumps(item["turns"], ensure_ascii=False),
-            "SQL查询语句": "\n\n".join(sql_parts),
-            "图形格式": chart_type,
+            "SQL查询语法": "\n\n".join(sql_parts),
             "回答": json.dumps(answer_payloads, ensure_ascii=False),
         })
     path = Path(output_xlsx)
