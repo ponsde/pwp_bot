@@ -64,13 +64,19 @@ def _candidate_values(sql_vals: list[float]) -> list[float]:
 
 
 def _best_rel_diff(target: float, candidates: list[float]) -> float | None:
+    """Best relative difference. Accept sign flip: narratives often cite
+    financial magnitudes as positive even when the underlying SQL returns a
+    signed value (e.g. "负向现金流平均 51,483 万元" for SQL AVG = -51483.02).
+    """
     best: float | None = None
+    targets = {target, -target}
     for v in candidates:
         for scale in _SCALE_FACTORS:
             scaled = v * scale
-            rel = abs(target - scaled) / max(abs(scaled), 1.0)
-            if best is None or rel < best:
-                best = rel
+            for t in targets:
+                rel = abs(t - scaled) / max(abs(scaled), 1.0)
+                if best is None or rel < best:
+                    best = rel
     return best
 
 
