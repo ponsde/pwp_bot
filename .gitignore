@@ -98,3 +98,6 @@ result/test_*.xlsx
 # Root-level screenshots / scratch PNGs (e.g. user-pasted screenshots for debugging)
 /Screenshot*.png
 /*.png
+
+# OV bot session logs — runtime transient, not part of the project
+.openviking/bot/sessions/
