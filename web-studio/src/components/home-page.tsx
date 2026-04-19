@@ -34,9 +34,13 @@ async function fetchTokenStats(): Promise<unknown> {
 }
 
 async function fetchResourceStats(): Promise<unknown> {
+  // Use plain fetch instead of the OV client: /api/stats/resources is on our
+  // FastAPI backend and doesn't need the OV auth / interceptor chain.
   try {
-    const response = await client.get({ url: '/api/stats/resources', responseType: 'json' })
-    return (response.data as Record<string, unknown>)?.result ?? null
+    const res = await fetch('/api/stats/resources')
+    if (!res.ok) return null
+    const json = await res.json() as Record<string, unknown>
+    return json?.result ?? null
   } catch {
     return null
   }
@@ -414,7 +418,7 @@ function ResourceStatsCard({
   return (
     <Panel>
       <h2 className="mb-1 text-lg font-semibold tracking-tight">Resource Stats</h2>
-      <p className="mb-5 text-sm text-muted-foreground">研报分类分布（附件5）</p>
+      <p className="mb-5 text-sm text-muted-foreground">资源分类分布</p>
       {isLoading ? (
         <Skeleton className="h-48 w-full" />
       ) : isError ? (
