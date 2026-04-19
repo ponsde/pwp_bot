@@ -39,21 +39,12 @@
 | B2047 | num_mismatch | 百分比/比率类派生值 |
 | B2064 | num_mismatch | 类似 B2061 的聚合 |
 
-## 需要你早上人工决定的 4 道"硬失败"（bot 中断）
+## 4 道"硬失败"已修复 ✓
 
-这 4 题的 content 含 "Reached 15 iterations without completion"，说明 vikingbot 在作答时达到迭代上限，未能生成有效回答。**建议重跑或人工补答**：
-
-- **B2019** — 2025Q3 配方颗粒业务收入占比 >30% 的公司及同比增长率
-- **B2026** — AI 产业升级公司名单 + 2025Q3 销售费用率
-- **B2029** — （待查）
-- **B2046** — （待查）
-
-重跑命令参考（vikingbot 在线时）：
-```bash
-# 假设有 scripts/rerun_single.py 或手动从 Web UI 重新提问
-.venv/bin/python scripts/batch_via_bot.py --xlsx 附件6.xlsx --only B2019,B2026,B2029,B2046
-```
-（`--only` 过滤需要你确认或手动实现；当前 batch_via_bot 只能全量跑）
+**B2019/B2026/B2029/B2046** 原先 content 是 "Reached 15 iterations without completion"。
+过夜已通过 `scripts/rerun_single_rows.py` 重新调用 vikingbot 成功作答（每题 44–193 秒），
+并用 `scripts/fix_paper_paths.py` 把新 references 的 `./resources/...` 格式转回了
+附件 7 规范要求的 `./附件5：研报数据/...` 格式。现在这 4 行都有真内容 + 74 条正确引用。
 
 ## LLM-as-judge 标记的 32 道"叙述弱" (score ≤ 1)
 
@@ -104,9 +95,10 @@ ecfef5bb docs(plan): implementation plan for result audit + fix loop
 
 ## 要早上做的优先事项（排序）
 
-1. 🔴 **重跑 4 道硬失败题**（B2019/26/29/46）— 不处理会被评委一眼看出"15 iterations"这种报错
-2. 🟡 **抽查 32 道 LLM-judge 标红的题 content** — 挑 5-10 道看看是否可接受
-3. 🟢 **修 B2001_1 图表列选错**（低优先，单张图）
-4. 🟢 **论文里加审计章节**（装饰性，加分项）
+1. 🔴 已完成：4 道硬失败重跑 + refs 路径规范化
+2. 🟡 **抽查 35 道 LLM-judge 标红的题**（`paper/audit_report_task3_judge.md`）— 挑 5-10 道看看是否可接受。重点：B2002/B2016/B2018/B2023/B2025 这些被判为"严重幻觉"的
+3. 🟢 **修 B2001_1 图表列选错**（`pick_chart_columns` 默认取最后一列 numeric，对多列 SQL 如 top_profit+growth% 会选到 growth，标注成 "0.00 万元"）
+4. 🟢 **论文里加审计章节**（可用 AUDIT_SUMMARY 数据填）
+5. 🟢 **打包 程序.zip**：把 `.openviking/` `data/db/finance.db` `src/` `backend/` `scripts/` `web-studio/dist/` 论文 pdf 等放进去，按 `关于B题作品提交说明.pdf` 的要求
 
 如需我继续处理任何一项，回复即可。
