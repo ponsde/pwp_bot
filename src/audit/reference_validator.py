@@ -34,11 +34,19 @@ def validate_reference(
 
     path_ok = False
     if paper_path and not paper_path.startswith("viking://"):
-        # Try as-is (absolute) first, then relative to repo_root.
+        # The submission spec wants paths relative to the evaluator's working
+        # directory, i.e. "./附件5：研报数据/...". Locally the PDFs actually
+        # live under "./data/sample/示例数据/附件5：研报数据/..." because of
+        # how the repo stashes dev data. Try both.
         p = Path(paper_path)
-        if not p.is_absolute():
-            p = (repo_root / paper_path).resolve()
-        path_ok = p.is_file()
+        if p.is_absolute():
+            path_ok = p.is_file()
+        else:
+            rel = paper_path.lstrip("./")
+            for base in (repo_root, repo_root / "data" / "sample" / "示例数据"):
+                if (base / rel).is_file():
+                    path_ok = True
+                    break
 
     if not text:
         return RefResult(path_ok=path_ok, text_ok=True)

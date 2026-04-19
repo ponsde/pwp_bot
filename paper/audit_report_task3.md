@@ -1,0 +1,308 @@
+# 结果审计报告
+
+阻塞 **69**　可疑 **87**　提示 **134**
+
+## 阻塞
+
+| 题号 | 类别 | 说明 |
+| :-- | :-- | :-- |
+| B2003 | num_mismatch | content has 124.82亿元 (≈12482000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 30.88% |
+| B2003 | num_mismatch | content has 52.13亿元 (≈5213000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 21.72% |
+| B2003 | num_mismatch | content has 9.53亿元 (≈953000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 66.88% |
+| B2014 | num_mismatch | content has 566.0亿元 (≈56600000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 94.54% |
+| B2027 | num_mismatch | content has 6.55亿元 (≈655000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 19.41% |
+| B2027 | num_mismatch | content has 2.02亿元 (≈202000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 52.99% |
+| B2027 | num_mismatch | content has 3.24亿元 (≈324000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 24.60% |
+| B2027 | num_mismatch | content has 0.43亿元 (≈43000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 54.40% |
+| B2047 | num_mismatch | content has 1614.0万 (≈16140000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 75.91% |
+| B2047 | num_mismatch | content has 1684.0万 (≈16840000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 74.87% |
+| B2047 | num_mismatch | content has 1458.0万 (≈14580000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 78.24% |
+| B2047 | num_mismatch | content has 14.1万 (≈141000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 68.98% |
+| B2047 | num_mismatch | content has 1540.0万 (≈15400000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 77.01% |
+| B2047 | num_mismatch | content has 1563.0万 (≈15630000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 76.67% |
+| B2047 | num_mismatch | content has 170.0元 (≈170.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 20.71% |
+| B2050 | num_mismatch | content has 5.4亿元 (≈540000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 90.00% |
+| B2050 | num_mismatch | content has 16.42亿元 (≈1642000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 69.59% |
+| B2050 | num_mismatch | content has 1.42亿元 (≈142000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 97.37% |
+| B2050 | num_mismatch | content has 212.57亿元 (≈21257000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 100.04% |
+| B2050 | num_mismatch | content has 36.33亿元 (≈3633000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 32.72% |
+| B2050 | num_mismatch | content has 14.53亿元 (≈1453000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 73.09% |
+| B2050 | num_mismatch | content has 4.25亿元 (≈425000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 92.13% |
+| B2050 | num_mismatch | content has 9907.0万元 (≈99070000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 98.17% |
+| B2054 | num_mismatch | content has -0.93亿元 (≈-93000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 15.07% |
+| B2063 | num_mismatch | content has 11.28亿元 (≈1128000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 22.76% |
+| B2063 | num_mismatch | content has 2.9亿元 (≈290000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 64.04% |
+| B2064 | num_mismatch | content has 247.36亿元 (≈24736000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 33.06% |
+| B2064 | num_mismatch | content has 395.96亿元 (≈39596000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 21.05% |
+| B2064 | num_mismatch | content has 387.36亿 (≈38736000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 22.77% |
+| B2064 | num_mismatch | content has 395.96亿 (≈39596000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 21.05% |
+| B2064 | num_mismatch | content has 225.54亿 (≈22554000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 21.32% |
+| B2064 | num_mismatch | content has 247.36亿 (≈24736000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 33.06% |
+| B2064 | num_mismatch | content has 253.0亿元 (≈25300000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 36.09% |
+| B2064 | num_mismatch | content has 247.36亿元 (≈24736000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 33.06% |
+| B2064 | num_mismatch | content has -82.12亿元 (≈-8212000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 99.00% |
+| B2064 | num_mismatch | content has -427.63亿元 (≈-42763000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 94.79% |
+| B2064 | num_mismatch | content has 245.0亿元 (≈24500000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 31.79% |
+| B2066 | num_mismatch | content has 590.0元 (≈590.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 72.35% |
+| B2066 | num_mismatch | content has 760.0元 (≈760.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 64.39% |
+| B2066 | num_mismatch | content has 600.0元 (≈600.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 71.88% |
+| B2066 | num_mismatch | content has 760.0元 (≈760.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 64.39% |
+| B2068 | num_mismatch | content has 160.0万元 (≈1600000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 25.33% |
+| B2068 | num_mismatch | content has 8000.0万 (≈80000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 15.75% |
+| B2074 | num_mismatch | content has -45.53亿元 (≈-4553000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 89.29% |
+| B2074 | num_mismatch | content has 167.17亿元 (≈16717000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 81.46% |
+| B2074 | num_mismatch | content has -41.12亿元 (≈-4112000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 90.33% |
+| B2074 | num_mismatch | content has -41.79亿元 (≈-4179000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 90.17% |
+| B2074 | num_mismatch | content has -60.87亿元 (≈-6087000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 85.69% |
+| B2074 | num_mismatch | content has -53.42亿元 (≈-5342000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 87.44% |
+| B2074 | num_mismatch | content has -45.53亿元 (≈-4553000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 89.29% |
+| B2074 | num_mismatch | content has -41.79亿元 (≈-4179000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 90.17% |
+| B2074 | num_mismatch | content has 5718.89万元 (≈57188900.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 15.25% |
+| B2074 | num_mismatch | content has 425.23万元 (≈4252300.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 52.84% |
+| B2074 | num_mismatch | content has -60.87亿元 (≈-6087000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 85.69% |
+| B2074 | num_mismatch | content has 41.79亿元 (≈4179000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 30.35% |
+| B2074 | num_mismatch | content has -60.87亿元 (≈-6087000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 85.69% |
+| B2074 | num_mismatch | content has -41.12亿元 (≈-4112000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 90.33% |
+| B2074 | num_mismatch | content has -16.25亿元 (≈-1625000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 96.18% |
+| B2074 | num_mismatch | content has 41.79亿元 (≈4179000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 30.35% |
+| B2074 | num_mismatch | content has 273.54亿元 (≈27354000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 69.66% |
+| B2074 | num_mismatch | content has 173.36亿元 (≈17336000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 80.77% |
+| B2074 | num_mismatch | content has -53.42亿 (≈-5342000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 87.44% |
+| B2074 | num_mismatch | content has -45.74亿 (≈-4574000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 89.24% |
+| B2074 | num_mismatch | content has -45.53亿 (≈-4553000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 89.29% |
+| B2074 | num_mismatch | content has -41.79亿元 (≈-4179000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 90.17% |
+| B2074 | num_mismatch | content has -60.87亿元 (≈-6087000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 85.69% |
+| B2074 | num_mismatch | content has -60.87亿元 (≈-6087000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 85.69% |
+| B2074 | num_mismatch | content has -45.53亿元 (≈-4553000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 89.29% |
+| B2075 | num_mismatch | content has -283.94万元 (≈-2839400.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 30.75% |
+
+## 可疑
+
+| 题号 | 类别 | 说明 |
+| :-- | :-- | :-- |
+| B2003 | num_mismatch | content has 60.05亿元 (≈6005000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 9.83% |
+| B2005 | num_mismatch | content has 358510.0万元 (≈3585100000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 7.91% |
+| B2006 | num_mismatch | content has -0.26亿元 (≈-26000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 1.95% |
+| B2006 | num_mismatch | content has 0.38亿元 (≈38000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 2.06% |
+| B2007 | num_mismatch | content has -122.02亿元 (≈-12202000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 1.36% |
+| B2008 | num_mismatch | content has 200.0亿元 (≈20000000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 9.03% |
+| B2008 | num_mismatch | content has 200.0亿元 (≈20000000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 9.03% |
+| B2008 | num_mismatch | content has 200.0亿元 (≈20000000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 9.03% |
+| B2008 | num_mismatch | content has 103.4亿元 (≈10340000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 2.44% |
+| B2008 | num_mismatch | content has 200.0亿元 (≈20000000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 9.03% |
+| B2008 | num_mismatch | content has 200.0亿元 (≈20000000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 9.03% |
+| B2010 | num_mismatch | content has 5.31亿元 (≈531000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 1.09% |
+| B2011 | num_mismatch | content has 18.3亿元 (≈1830000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 3.98% |
+| B2011 | num_mismatch | content has 18.3亿元 (≈1830000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 3.98% |
+| B2011 | num_mismatch | content has 5.2亿元 (≈520000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 4.41% |
+| B2011 | num_mismatch | content has 1495.0亿 (≈149500000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 1.35% |
+| B2011 | num_mismatch | content has 748.0亿 (≈74800000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 1.17% |
+| B2011 | num_mismatch | content has 273.0亿 (≈27300000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 4.94% |
+| B2011 | num_mismatch | content has 120.0亿 (≈12000000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 1.23% |
+| B2011 | num_mismatch | content has 99.0亿 (≈9900000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 1.32% |
+| B2011 | num_mismatch | content has 85.0亿 (≈8500000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 1.08% |
+| B2011 | num_mismatch | content has 426.0亿 (≈42600000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 11.87% |
+| B2011 | num_mismatch | content has 231.0亿 (≈23100000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 4.72% |
+| B2011 | num_mismatch | content has 9.6亿元 (≈960000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 1.52% |
+| B2011 | num_mismatch | content has 5.28亿元 (≈528000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 2.94% |
+| B2011 | num_mismatch | content has 6.31亿元 (≈631000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 2.61% |
+| B2027 | num_mismatch | content has 4.9亿元 (≈490000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 14.03% |
+| B2027 | num_mismatch | content has 0.09亿元 (≈9000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 8.21% |
+| B2039 | num_mismatch | content has 10.0亿元 (≈1000000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 5.72% |
+| B2039 | num_mismatch | content has 10.0亿元 (≈1000000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 5.72% |
+| B2039 | num_mismatch | content has 10.0亿元 (≈1000000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 5.72% |
+| B2039 | num_mismatch | content has 10.0亿 (≈1000000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 5.72% |
+| B2041 | num_mismatch | content has 34.61亿元 (≈3461000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 1.46% |
+| B2047 | num_mismatch | content has 187.0万 (≈1870000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 12.78% |
+| B2047 | num_mismatch | content has 140.0万 (≈1400000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 5.20% |
+| B2047 | num_mismatch | content has 600.0元 (≈600.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 2.61% |
+| B2047 | num_mismatch | content has 148.1亿元 (≈14810000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 11.29% |
+| B2050 | num_mismatch | content has 71.8亿元 (≈7180000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 7.16% |
+| B2052 | num_mismatch | content has 31904.0万元 (≈319040000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 1.03% |
+| B2052 | num_mismatch | content has 34694.0万元 (≈346940000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 3.03% |
+| B2052 | num_mismatch | content has 14168.0万元 (≈141680000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 2.73% |
+| B2052 | num_mismatch | content has 2657.0万元 (≈26570000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 2.40% |
+| B2052 | num_mismatch | content has 7016.0万元 (≈70160000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 9.02% |
+| B2054 | num_mismatch | content has 108.8亿元 (≈10880000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 1.67% |
+| B2054 | num_mismatch | content has 27.3亿元 (≈2730000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 13.70% |
+| B2054 | num_mismatch | content has 108.8亿元 (≈10880000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 1.67% |
+| B2054 | num_mismatch | content has 108.8亿元 (≈10880000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 1.67% |
+| B2054 | num_mismatch | content has 27.3亿元 (≈2730000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 13.70% |
+| B2054 | num_mismatch | content has 8.9亿元 (≈890000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 5.77% |
+| B2054 | num_mismatch | content has 1.1亿元 (≈110000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 1.19% |
+| B2055 | num_mismatch | content has 181095.82万元 (≈1810958200.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 4.12% |
+| B2055 | num_mismatch | content has 32029.01万元 (≈320290100.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 4.07% |
+| B2063 | num_mismatch | content has 26.5亿元 (≈2650000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 3.55% |
+| B2064 | num_mismatch | content has 118.06亿元 (≈11806000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 13.72% |
+| B2064 | num_mismatch | content has 13.78亿元 (≈1378000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 6.06% |
+| B2065 | num_mismatch | content has 5.1亿元 (≈510000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 2.82% |
+| B2065 | num_mismatch | content has 10.67亿元 (≈1067000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 12.57% |
+| B2066 | num_mismatch | content has 14.1万 (≈141000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 1.44% |
+| B2067 | num_mismatch | content has 55.44亿元 (≈5544000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 1.94% |
+| B2067 | num_mismatch | content has 20.2亿元 (≈2020000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 4.67% |
+| B2067 | num_mismatch | content has 23.2亿元 (≈2320000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 4.95% |
+| B2067 | num_mismatch | content has 19.73亿元 (≈1973000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 2.24% |
+| B2067 | num_mismatch | content has 1.85亿元 (≈185000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 2.10% |
+| B2067 | num_mismatch | content has 30.51亿元 (≈3051000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 14.16% |
+| B2067 | num_mismatch | content has 24.74亿元 (≈2474000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 1.36% |
+| B2067 | num_mismatch | content has 30.51亿 (≈3051000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 14.16% |
+| B2067 | num_mismatch | content has 55.44亿元 (≈5544000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 1.94% |
+| B2068 | num_mismatch | content has 1.37亿元 (≈137000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 1.71% |
+| B2068 | num_mismatch | content has 5000.0万 (≈50000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 4.10% |
+| B2068 | num_mismatch | content has 5000.0万 (≈50000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 4.10% |
+| B2068 | num_mismatch | content has 744.24亿元 (≈74424000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 5.45% |
+| B2068 | num_mismatch | content has 1.37亿元 (≈137000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 1.71% |
+| B2068 | num_mismatch | content has 5000.0万元 (≈50000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 4.10% |
+| B2069 | num_mismatch | content has -0.04亿元 (≈-4000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 4.18% |
+| B2071 | num_mismatch | content has 65.0万元 (≈650000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 2.67% |
+| B2071 | num_mismatch | content has 165.0万元 (≈1650000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 3.82% |
+| B2071 | num_mismatch | content has 170.0元 (≈170.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 3.21% |
+| B2071 | num_mismatch | content has 140.83亿元 (≈14083000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 2.24% |
+| B2072 | num_mismatch | content has -0.11亿元 (≈-11000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 2.66% |
+| B2072 | num_mismatch | content has -0.015亿元 (≈-1500000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 1.36% |
+| B2072 | num_mismatch | content has 0.23亿元 (≈23000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 11.60% |
+| B2072 | num_mismatch | content has -0.11亿元 (≈-11000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 2.66% |
+| B2072 | num_mismatch | content has 0.68亿元 (≈68000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 1.21% |
+| B2073 | num_mismatch | content has 0.34亿元 (≈34000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 1.78% |
+| B2074 | num_mismatch | content has 8.36亿元 (≈836000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 2.07% |
+| B2074 | num_mismatch | content has 25.54亿元 (≈2554000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 3.80% |
+| B2074 | num_mismatch | content has 8.36亿 (≈836000000.00 元); closest SQL value (incl. pairwise ± combos, 元/万/亿 scales) is off by 2.07% |
+
+## 提示
+
+| 题号 | 类别 | 说明 |
+| :-- | :-- | :-- |
+| B2001 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2001 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2001 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2003 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2003 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2003 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2006 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2006 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2006 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2006 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2006 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2006 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2006 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2006 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2007 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2007 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2007 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2007 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2007 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2007 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2007 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2007 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2010 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2010 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2010 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2010 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2010 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2010 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2010 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2010 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2010 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2010 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2010 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2010 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2010 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2010 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2012 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2012 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2012 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2012 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2012 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2012 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2012 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2012 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2012 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2014 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2014 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2014 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2015 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2015 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2015 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2028 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2028 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2028 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2028 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2028 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2032 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2032 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2032 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2037 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2037 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2037 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2040 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2040 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2040 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2040 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2040 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2041 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2041 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2041 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2041 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2047 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2047 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2047 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2059 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2059 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2059 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2059 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2059 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2059 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2062 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2062 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2062 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2063 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2063 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2063 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2064 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2064 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2064 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2065 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2065 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2065 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2066 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2066 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2066 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2067 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2067 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2067 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2068 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2068 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2068 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2069 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2069 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2069 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2070 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2070 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2070 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2071 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2071 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2071 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2071 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2071 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2072 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2072 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2072 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2072 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2072 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2073 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2073 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2073 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2074 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2074 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2074 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2074 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2074 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2074 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2074 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2074 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2075 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2075 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2075 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2076 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2076 | ref_empty_path | reference has empty paper_path (will be dropped) |
+| B2076 | ref_empty_path | reference has empty paper_path (will be dropped) |

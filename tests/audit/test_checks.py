@@ -39,6 +39,22 @@ def test_number_consistency_skips_when_no_sql():
     assert check_number_consistency("B2002", content="100 万元", sql_rows=[]) == []
 
 
+def test_number_consistency_accepts_pairwise_difference():
+    # SQL returned two values, content cites their difference (growth amount)
+    sql_rows = [{"a": 157478.76}, {"a": 146238.21}]   # 万元-scale
+    content = "同比下降约 1.12 亿元。"                # 157478.76 - 146238.21 = 11240.55 万 = 1.124 亿
+    findings = check_number_consistency("B1005", content=content, sql_rows=sql_rows)
+    assert findings == []
+
+
+def test_number_consistency_demotes_rough_match_to_suspect():
+    # content off by ~12% from any direct or pairwise value → suspect, not blocking
+    sql_rows = [{"a": 100.0}]
+    content = "约 88 元。"   # 12% low → suspect
+    findings = check_number_consistency("B9999", content=content, sql_rows=sql_rows)
+    assert findings and all(f.severity == "suspect" for f in findings)
+
+
 def test_chart_file_missing(tmp_path: Path):
     findings = check_chart_file("B1002", path=tmp_path / "does_not_exist.jpg")
     assert findings and findings[0].severity == "blocking"

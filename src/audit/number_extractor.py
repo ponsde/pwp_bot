@@ -18,9 +18,10 @@ _UNIT_TO_YUAN = {
 }
 
 _PATTERN = re.compile(
-    r"(?<![\w\d])"
-    # Prefer comma-separated (1,234,567.89) first, then plain (3140 / 181.49).
-    # Plain alternative uses \d+ not \d{1,3} so "2025" captures fully.
+    # Only exclude if preceded by a digit (to avoid splitting "12345" mid-run).
+    # Python's \w includes CJK characters, so "约4,204" would wrongly skip "4"
+    # if we used \w here — we use \d to tolerate Chinese chars right before.
+    r"(?<!\d)"
     r"(-?\d{1,3}(?:,\d{3})+(?:\.\d+)?|-?\d+(?:\.\d+)?)"
     r"\s*"
     r"(亿元|亿|万元|万|元|%)?"

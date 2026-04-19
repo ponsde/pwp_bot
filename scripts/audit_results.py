@@ -109,25 +109,33 @@ def main() -> int:
                 if not isinstance(ref, dict):
                     continue
                 refs_text.append(str(ref.get("text") or ""))
+                pp = str(ref.get("paper_path") or "").strip()
                 rr = validate_reference(
                     ref=ref,
                     repo_root=ROOT,
                     ov_root=ROOT / ".openviking",
                 )
                 if not rr.path_ok:
-                    findings.append(
-                        Finding(
-                            bh, "suspect", "ref_path_missing",
-                            f"paper_path not found: {ref.get('paper_path')!r}",
+                    # Empty paper_path is cheap to clean (clean-refs drops it);
+                    # a real path that's absent on disk is the interesting case.
+                    if pp == "":
+                        findings.append(
+                            Finding(
+                                bh, "hint", "ref_empty_path",
+                                "reference has empty paper_path (will be dropped)",
+                            )
                         )
-                    )
-                elif not rr.text_ok:
-                    findings.append(
-                        Finding(
-                            bh, "suspect", "ref_text_miss",
-                            "reference text not found in any OV chunk",
+                    else:
+                        findings.append(
+                            Finding(
+                                bh, "suspect", "ref_path_missing",
+                                f"paper_path not found: {pp!r}",
+                            )
                         )
-                    )
+                # NOTE: ref_text_miss was removed. The text field is an LLM
+                # summary of the source (附件 7 表 5 calls it "原文摘要"), not
+                # a verbatim quote — so fragment matching against OV chunks
+                # produces noise without signal.
             if content and len(content.strip()) < 30:
                 findings.append(
                     Finding(bh, "hint", "short_content", f"content length {len(content)}")
