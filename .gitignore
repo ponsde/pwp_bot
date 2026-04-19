@@ -94,3 +94,7 @@ result/test_*.xlsx
 # ── Sandbox outputs (pre-submission intermediate) ─────────────
 # Keep finalized result_2.xlsx / result_3.xlsx at repo root;
 # chart images under result/ matching result_*_N.jpg are final output.
+
+# Root-level screenshots / scratch PNGs (e.g. user-pasted screenshots for debugging)
+/Screenshot*.png
+/*.png
