@@ -58,8 +58,14 @@ fin_data.db
 # ── Third-party reference / legacy code ───────────────────────
 references/
 
-# ── OpenViking runtime state (rebuilt by scripts/index_research.py) ──
-.openviking/
+# ── OpenViking runtime state ──
+# Ship the vector index so graders can run the full vikingbot stack without
+# waiting ~8h for scripts/index_research.py to rebuild it from 研报 PDFs.
+# The index is the only non-regenerable artifact from data we don't ship
+# (the 473 研报 PDFs aren't in-repo). Only temp/log/PID files are excluded.
+.openviking/.openviking.pid
+.openviking/*.log
+.openviking/logs/
 
 # ── web-studio (Vite app) ─────────────────────────────────────
 web-studio/node_modules/

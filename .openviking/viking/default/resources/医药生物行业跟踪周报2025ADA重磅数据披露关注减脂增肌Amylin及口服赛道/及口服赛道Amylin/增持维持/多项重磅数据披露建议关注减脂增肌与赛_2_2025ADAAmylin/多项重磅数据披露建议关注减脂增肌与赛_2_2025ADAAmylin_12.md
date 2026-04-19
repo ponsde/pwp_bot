@@ -1,0 +1,44 @@
+<!-- Page 16 -->
+行业跟踪周报
+安进生物技术咨询(上海) maridebart
+有限公司; Amgen, Inc. cafraglutide Phase I JXSL2500107 注射剂 生物制品 1 GIPR; GLP-1R
+北京诺诚健华医药科技有
+限公司 ICP-248片 Phase II CXHL2500610 片剂 化学药品 1 Bcl-2
+北京诺诚健华医药科技有
+限公司 ICP-248片 Phase II CXHL2500609 片剂 化学药品 1 Bcl-2
+VECTANS PHARMA 咪康唑口腔贴片 已上市 JYHZ2500126 口腔贴片 化学药品 5.1 fungal CYP51
+鞘内注射
+Biogen Netherlands B.V. 诺西那生钠注射液 已上市 JYHB2500334 剂 化学药品 5.1 SMN2
+Vetter Development
+Services USA Inc.; Alpine
+Immune Sciences, Inc.;
+乔治(北京)临床医学研究
+有限公司 povetacicept注射液 Phase III JXSB2500060 注射剂 生物制品 1 TACI
+Vertex Pharmaceuticals,
+Inc. povetacicept注射液 Phase III JXSL2500110 注射剂 生物制品 1 TACI
+BSP Pharmaceuticals
+S.p.A; 阿斯利康全球研发
+(中国)有限公司;
+AstraZeneca AB 注射用AZD8205 JXSL2500103 注射剂 生物制品 1 B7-H4
+Vifor Pharma Osterreich
+GmbH; Ebewe Pharma
+Ges.m.b.H.Nfg.KG 羟苯磺酸钙胶囊 已上市 JYHB2500333 胶囊剂 化学药品 5.1 not available
+Organon Ireland Ltd.;
+N.V. Organon 去氧孕烯炔雌醇片 已上市 JYHB2500335 片剂 化学药品 无 progestin; estrogen
+数据来源：CDE，东吴证券研究所
+3.2. 仿制药及生物类似物上市、临床申报情况
+表3：本周仿制药及生物类似物上市、临床申报一览表
+企业名称 药品名称 企业进度 受理号 剂型 药品类别 注册分类 靶点
+江苏明德制药有限公司 阿法骨化醇 已上市 CYHS2502250 滴剂 化学药品 4 vitamin D3
+青岛国信制药有限公司 阿法骨化醇 已上市 CYHB2501261 软胶囊 化学药品 无 vitamin D3
+金陵药业股份有限公司南 艾拉戈克钠 Phase III CYHL2500118 片剂 化学药品 3 GnRHR
+京金陵制药厂
+金陵药业股份有限公司南 艾拉戈克钠 Phase III CYHL2500117 片剂 化学药品 3 GnRHR
+京金陵制药厂
+广东南国药业有限公司 艾司唑仑 已上市 CYHB2550238 片剂 化学药品 GABAA receptor
+联邦制药厂有限公司 阿莫西林 已上市 JYHZ2500119 颗粒剂 化学药品 PBP
+中山市力恩普制药有限公 阿莫西林+克拉维 已上市 CYHB2550240 干混悬剂 化学药品 无 PBP; β-lactamase
+司 酸钾
+16 / 27
+东吴证券研究所
+请务必阅读正文之后的免责声明部分

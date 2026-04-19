@@ -1,0 +1,150 @@
+{
+  "top10_rnd": [
+    {
+      "code": "300869",
+      "abbr": "康泰医学",
+      "rnd_ratio": 20.08,
+      "growth_2025q3": null,
+      "growth_2024q3": null
+    },
+    {
+      "code": "600557",
+      "abbr": "康缘药业",
+      "rnd_ratio": 15.01,
+      "growth_2025q3": -37.56,
+      "growth_2024q3": 24.28
+    },
+    {
+      "code": "603896",
+      "abbr": "寿仙谷",
+      "rnd_ratio": 9.79,
+      "growth_2025q3": -39.41,
+      "growth_2024q3": -63.77
+    },
+    {
+      "code": "002907",
+      "abbr": "华森制药",
+      "rnd_ratio": 9.46,
+      "growth_2025q3": -32.37,
+      "growth_2024q3": 701.72
+    },
+    {
+      "code": "002603",
+      "abbr": "以岭药业",
+      "rnd_ratio": 9.27,
+      "growth_2025q3": 1264.61,
+      "growth_2024q3": -84.07
+    },
+    {
+      "code": "002773",
+      "abbr": "康弘药业",
+      "rnd_ratio": 9.22,
+      "growth_2025q3": 7.71,
+      "growth_2024q3": -6.18
+    },
+    {
+      "code": "600535",
+      "abbr": "天士力",
+      "rnd_ratio": 8.77,
+      "growth_2025q3": 16.56,
+      "growth_2024q3": -44.7
+    },
+    {
+      "code": "603998",
+      "abbr": "方盛制药",
+      "rnd_ratio": 8.62,
+      "growth_2025q3": 8.49,
+      "growth_2024q3": 158.74
+    },
+    {
+      "code": "600566",
+      "abbr": "济川药业",
+      "rnd_ratio": 6.91,
+      "growth_2025q3": -47.19,
+      "growth_2024q3": -6.58
+    },
+    {
+      "code": "002275",
+      "abbr": "桂林三金",
+      "rnd_ratio": 6.23,
+      "growth_2025q3": -100.0,
+      "growth_2024q3": 377.72
+    }
+  ],
+  "bottom10_rnd": [
+    {
+      "code": "600671",
+      "abbr": "天目药业",
+      "rnd_ratio": 0.07,
+      "growth_2025q3": null,
+      "growth_2024q3": null
+    },
+    {
+      "code": "002390",
+      "abbr": "信邦制药",
+      "rnd_ratio": 0.1,
+      "growth_2025q3": null,
+      "growth_2024q3": null
+    },
+    {
+      "code": "002589",
+      "abbr": "瑞康医药",
+      "rnd_ratio": 0.31,
+      "growth_2025q3": null,
+      "growth_2024q3": null
+    },
+    {
+      "code": "002219",
+      "abbr": "新里程",
+      "rnd_ratio": 0.54,
+      "growth_2025q3": null,
+      "growth_2024q3": null
+    },
+    {
+      "code": "301331",
+      "abbr": "恩威医药",
+      "rnd_ratio": 0.68,
+      "growth_2025q3": null,
+      "growth_2024q3": null
+    },
+    {
+      "code": "600332",
+      "abbr": "白云山",
+      "rnd_ratio": 0.72,
+      "growth_2025q3": 30.27,
+      "growth_2024q3": -37.82
+    },
+    {
+      "code": "000538",
+      "abbr": "云南白药",
+      "rnd_ratio": 0.77,
+      "growth_2025q3": 0.55,
+      "growth_2024q3": -12.16
+    },
+    {
+      "code": "600518",
+      "abbr": "康美药业",
+      "rnd_ratio": 0.83,
+      "growth_2025q3": 64.46,
+      "growth_2024q3": 51.49
+    },
+    {
+      "code": "000650",
+      "abbr": "仁和药业",
+      "rnd_ratio": 0.93,
+      "growth_2025q3": 13.0,
+      "growth_2024q3": -57.3
+    },
+    {
+      "code": "600085",
+      "abbr": "同仁堂",
+      "rnd_ratio": 1.07,
+      "growth_2025q3": null,
+      "growth_2024q3": null
+    }
+  ],
+  "top10_avg_2025": 115.64888888888888,
+  "top10_avg_2024": 117.46222222222224,
+  "bottom10_avg_2025": 27.069999999999997,
+  "bottom10_avg_2024": -13.947499999999998
+}
