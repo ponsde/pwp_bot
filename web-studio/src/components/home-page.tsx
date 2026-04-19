@@ -33,6 +33,15 @@ async function fetchTokenStats(): Promise<unknown> {
   }
 }
 
+async function fetchResourceStats(): Promise<unknown> {
+  try {
+    const response = await client.get({ url: '/api/stats/resources', responseType: 'json' })
+    return (response.data as Record<string, unknown>)?.result ?? null
+  } catch {
+    return null
+  }
+}
+
 function asRecord(v: unknown): Record<string, unknown> {
   return v !== null && typeof v === 'object' && !Array.isArray(v)
     ? (v as Record<string, unknown>)
@@ -80,6 +89,27 @@ const CATEGORY_COLORS_DARK: Record<string, string> = {
 }
 
 const CATEGORY_ORDER = ['profile', 'preferences', 'entities', 'events', 'cases', 'patterns', 'tools', 'skills']
+
+// Resource category palette — distinct hues so 研报 card reads different from memory card
+const RESOURCE_COLORS: Record<string, string> = {
+  stock: '#2B5BA8',     // deep navy (taidi primary)
+  industry: '#E68A2E',  // warm orange
+  other: '#a1a1aa',     // neutral gray
+}
+
+const RESOURCE_COLORS_DARK: Record<string, string> = {
+  stock: '#6D95D8',
+  industry: '#F1AB61',
+  other: '#71717a',
+}
+
+const RESOURCE_LABELS: Record<string, string> = {
+  stock: '个股研报',
+  industry: '行业研报',
+  other: '其他',
+}
+
+const RESOURCE_ORDER = ['stock', 'industry', 'other']
 
 // ---------- status helpers ----------
 
@@ -360,6 +390,82 @@ function MemoryStatsCard({
   )
 }
 
+function ResourceStatsCard({
+  data,
+  isLoading,
+  isError,
+}: {
+  data: unknown
+  isLoading: boolean
+  isError: boolean
+}) {
+  const isDark = useIsDark()
+  const record = asRecord(data)
+  const byCategory = asRecord(record.by_category)
+  const total = asNumber(record.total)
+  const colors = isDark ? RESOURCE_COLORS_DARK : RESOURCE_COLORS
+
+  const chartData = RESOURCE_ORDER
+    .map((cat) => ({ name: cat, value: asNumber(byCategory[cat]) }))
+    .filter((d) => d.value > 0)
+
+  const hasData = chartData.length > 0
+
+  return (
+    <Panel>
+      <h2 className="mb-1 text-lg font-semibold tracking-tight">Resource Stats</h2>
+      <p className="mb-5 text-sm text-muted-foreground">研报分类分布（附件5）</p>
+      {isLoading ? (
+        <Skeleton className="h-48 w-full" />
+      ) : isError ? (
+        <span className="text-sm text-destructive">请求失败</span>
+      ) : (
+        <div className="flex items-start gap-8">
+          {hasData && (
+            <PieChart width={180} height={180} className="shrink-0">
+              <Pie
+                data={chartData}
+                cx={90}
+                cy={90}
+                innerRadius={50}
+                outerRadius={80}
+                dataKey="value"
+                strokeWidth={3}
+                stroke={isDark ? 'hsl(240 3.7% 15.9%)' : 'hsl(0 0% 100%)'}
+              >
+                {chartData.map((entry) => (
+                  <Cell key={entry.name} fill={colors[entry.name] ?? '#94a3b8'} />
+                ))}
+                <Label
+                  value={String(total)}
+                  position="center"
+                  fill={isDark ? '#fafafa' : '#18181b'}
+                  className="text-3xl font-bold"
+                />
+              </Pie>
+            </PieChart>
+          )}
+          <div className="grid w-full gap-2.5 pt-1">
+            {RESOURCE_ORDER.map((cat) => {
+              const count = asNumber(byCategory[cat])
+              return (
+                <div key={cat} className="flex items-center gap-3 text-sm">
+                  <span
+                    className="inline-block size-3 shrink-0 rounded-full"
+                    style={{ backgroundColor: colors[cat] }}
+                  />
+                  <span className="font-medium">{RESOURCE_LABELS[cat] ?? cat}</span>
+                  <span className="ml-auto tabular-nums text-muted-foreground">{count}</span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+    </Panel>
+  )
+}
+
 function RecentTasksCard({
   data,
   isLoading,
@@ -518,34 +624,54 @@ export function HomePage() {
     queryFn: () => fetchTokenStats(),
   })
 
+  const resourceStats = useQuery({
+    queryKey: ['stats-resources'],
+    queryFn: () => fetchResourceStats(),
+  })
+
   const memRecord = asRecord(memoryStats.data)
   const vecRecord = asRecord(vectorCount.data)
   const tokenRecord = asRecord(tokenStats.data)
   const tokenLlm = asRecord(tokenRecord.llm)
   const tokenEmb = asRecord(tokenRecord.embedding)
 
+  // Taidi-specific stats live under systemStatus.data.taidi
+  const sysRecord = asRecord(systemStatus.data)
+  const taidiRecord = asRecord(sysRecord.taidi)
+  const companyCount = asNumber(taidiRecord.company_count)
+  const reportPeriodCount = asNumber(taidiRecord.report_period_count)
+  const researchResourceCount = asNumber(taidiRecord.research_resource_count)
+  const latestPeriod = asString(taidiRecord.latest_period)
+
   return (
     <div className="flex flex-col gap-6 pb-8">
-      {/* Row 1: Summary cards */}
-      <div className="grid gap-4 md:grid-cols-3">
+      {/* Row 1: Taidi primary stats */}
+      <div className="grid gap-4 md:grid-cols-4">
         <StatCard
-          title="Vector Count"
-          value={asNumber(vecRecord.count).toLocaleString()}
-          subtitle="向量记录"
-          isLoading={vectorCount.isLoading}
-          isError={vectorCount.isError}
+          title="上市公司"
+          value={companyCount.toLocaleString()}
+          subtitle="财报已入库的中药公司"
+          isLoading={systemStatus.isLoading}
+          isError={systemStatus.isError}
         />
         <StatCard
-          title="Memory Total"
-          value={asNumber(memRecord.total_memories).toLocaleString()}
-          subtitle="记忆总数"
-          isLoading={memoryStats.isLoading}
-          isError={memoryStats.isError}
+          title="研报资源"
+          value={researchResourceCount.toLocaleString()}
+          subtitle="RAG 已索引的研报文档"
+          isLoading={systemStatus.isLoading}
+          isError={systemStatus.isError}
         />
         <StatCard
-          title="Token Usage"
+          title="报告期"
+          value={reportPeriodCount.toLocaleString()}
+          subtitle={latestPeriod ? `最新：${latestPeriod}` : '覆盖的财报期间数'}
+          isLoading={systemStatus.isLoading}
+          isError={systemStatus.isError}
+        />
+        <StatCard
+          title="Token 消耗"
           value={asNumber(tokenRecord.total_tokens).toLocaleString()}
-          subtitle={`LLM ${asNumber(tokenLlm.total_tokens).toLocaleString()} · Embedding ${asNumber(tokenEmb.total_tokens).toLocaleString()}`}
+          subtitle={`LLM ${asNumber(tokenLlm.total_tokens).toLocaleString()} · Embed ${asNumber(tokenEmb.total_tokens).toLocaleString()}`}
           isLoading={tokenStats.isLoading}
           isError={tokenStats.isError}
         />
@@ -561,26 +687,33 @@ export function HomePage() {
         error={observerSystem.error}
       />
 
-      {/* Row 3: Memory stats + Tasks */}
+      {/* Row 3: Resource stats + Memory stats side by side */}
       <div className="grid gap-4 md:grid-cols-2">
+        <ResourceStatsCard
+          data={resourceStats.data}
+          isLoading={resourceStats.isLoading}
+          isError={resourceStats.isError}
+        />
         <MemoryStatsCard
           data={memoryStats.data}
           isLoading={memoryStats.isLoading}
           isError={memoryStats.isError}
         />
+      </div>
+
+      {/* Row 4: Tasks + Sessions side by side */}
+      <div className="grid gap-4 md:grid-cols-2">
         <RecentTasksCard
           data={tasks.data}
           isLoading={tasks.isLoading}
           isError={tasks.isError}
         />
+        <SessionsCard
+          data={sessions.data}
+          isLoading={sessions.isLoading}
+          isError={sessions.isError}
+        />
       </div>
-
-      {/* Row 4: Sessions */}
-      <SessionsCard
-        data={sessions.data}
-        isLoading={sessions.isLoading}
-        isError={sessions.isError}
-      />
     </div>
   )
 }

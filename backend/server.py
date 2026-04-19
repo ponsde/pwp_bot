@@ -146,6 +146,54 @@ class StatsResponse(BaseModel):
     latest_period: str | None
     db_path: str
     rag_enabled: bool
+    research_resource_count: int = 0
+
+
+def _count_ov_resources() -> int:
+    """Cheap filesystem count of indexed research resources.
+
+    OV stores each ingested PDF as a directory under
+    ``.openviking/viking/default/resources/{sanitized_name}/``. Counting the
+    top-level dirs gives an accurate indexed count without opening the OV
+    client (which conflicts with vikingbot holding the LevelDB lock)."""
+    from pathlib import Path
+    resources_dir = Path(__file__).resolve().parent.parent / ".openviking" / "viking" / "default" / "resources"
+    if not resources_dir.exists():
+        return 0
+    return sum(1 for p in resources_dir.iterdir() if p.is_dir())
+
+
+def _resource_breakdown() -> dict[str, Any]:
+    """Breakdown of indexed resources by 研报 category (个股 vs 行业).
+
+    Cross-references OV's indexed resource names against the source PDF tree
+    at ``data/sample/示例数据/附件5：研报数据/{个股研报,行业研报}/``. Uses
+    the same sanitizer as ``scripts/index_research.py`` so names line up.
+    """
+    from pathlib import Path
+    import re
+    root = Path(__file__).resolve().parent.parent
+    resources_dir = root / ".openviking" / "viking" / "default" / "resources"
+    research_root = root / "data" / "sample" / "示例数据" / "附件5：研报数据"
+    if not resources_dir.exists() or not research_root.exists():
+        return {"total": _count_ov_resources(), "by_category": {"stock": 0, "industry": 0, "other": 0}}
+    sanitize = re.compile(r"[^\w\u4e00-\u9fff]")
+    cat_map: dict[str, str] = {}
+    for sub_zh, label in (("个股研报", "stock"), ("行业研报", "industry")):
+        for pdf in (research_root / sub_zh).glob("*.pdf"):
+            key = sanitize.sub("", pdf.stem)
+            cat_map[key] = label
+    counts = {"stock": 0, "industry": 0, "other": 0}
+    for rsrc_dir in resources_dir.iterdir():
+        if not rsrc_dir.is_dir():
+            continue
+        name = rsrc_dir.name
+        # Strip trailing _N suffixes OV adds on collision
+        base = re.sub(r"_\d+$", "", name)
+        cat = cat_map.get(base) or cat_map.get(name) or "other"
+        counts[cat] += 1
+    total = sum(counts.values())
+    return {"total": total, "by_category": counts}
 
 
 _engine: Any = None  # Text2SQLEngine | ResearchQAEngine
@@ -291,6 +339,11 @@ def create_app() -> FastAPI:
         frontend it's talking to one."""
         return {"status": "ok", "user_id": "embedded"}
 
+    @app.get("/api/stats/resources")
+    def stats_resources() -> dict[str, Any]:
+        """Breakdown of indexed 研报 resources for the home dashboard."""
+        return _ov_ok(_resource_breakdown())
+
     @app.get("/api/stats", response_model=StatsResponse)
     def stats() -> StatsResponse:
         try:
@@ -308,6 +361,7 @@ def create_app() -> FastAPI:
             latest_period=latest,
             db_path=DB_PATH,
             rag_enabled=_is_research_engine(get_engine()),
+            research_resource_count=_count_ov_resources(),
         )
 
     def _persist_exchange(session_id: str, question: str, response: AskResponse) -> None:
@@ -825,6 +879,7 @@ def create_app() -> FastAPI:
         except Exception:
             vb_ok = False
 
+        research_count = _count_ov_resources()
         return _ov_ok({
             "initialized": db_ok and vb_ok,
             "taidi": {
@@ -833,6 +888,7 @@ def create_app() -> FastAPI:
                 "latest_period": latest,
                 "db_path": DB_PATH,
                 "rag_enabled": vb_ok,
+                "research_resource_count": research_count,
             },
             "user_id": "embedded",
         })
