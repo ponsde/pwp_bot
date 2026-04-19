@@ -86,6 +86,33 @@ export async function renameSession(id: string, title: string): Promise<void> {
 // Message types matching OV's Message interface
 import type { Message } from '../-types/message'
 
+// Sentinel: when a message's parts contain more than plain text (e.g. tool
+// calls), we persist the FULL parts array as JSON in the content field
+// prefixed with this marker. Load logic detects the marker and restores
+// parts — so tool-call history survives tab switches.
+const PARTS_ENVELOPE = '__PARTS_JSON__:'
+
+function encodeMessageContent(parts: Message['parts']): string {
+  const hasNonText = parts.some((p) => p.type !== 'text')
+  if (!hasNonText) {
+    return parts
+      .filter((p) => p.type === 'text')
+      .map((p) => (p as { text: string }).text)
+      .join('\n')
+  }
+  return `${PARTS_ENVELOPE}${JSON.stringify(parts)}`
+}
+
+function decodeMessageContent(content: string): Message['parts'] | null {
+  if (!content.startsWith(PARTS_ENVELOPE)) return null
+  try {
+    const parsed = JSON.parse(content.slice(PARTS_ENVELOPE.length))
+    return Array.isArray(parsed) ? (parsed as Message['parts']) : null
+  } catch {
+    return null
+  }
+}
+
 export async function loadSessionMessages(
   sessionId: string,
   signal?: AbortSignal,
@@ -97,32 +124,36 @@ export async function loadSessionMessages(
   const data = (await res.json()) as { messages?: Array<Record<string, unknown>> }
   const raw = data.messages ?? []
 
-  // Convert flat DB rows to OV Message format (with parts)
-  return raw.map((m) => ({
-    id: (m.id as string) || `msg_${Date.now().toString(36)}`,
-    role: (m.role as 'user' | 'assistant') || 'user',
-    parts: [{ type: 'text' as const, text: (m.content as string) || '' }],
-    created_at: (m.created_at as string) || new Date().toISOString(),
-  }))
+  // Convert flat DB rows to OV Message format (with parts). If the row's
+  // content begins with the PARTS_ENVELOPE marker, restore the full parts
+  // array (tool calls + text) — otherwise wrap the plain content in a single
+  // text part for back-compat with older rows.
+  return raw.map((m) => {
+    const rawContent = (m.content as string) || ''
+    const decodedParts = decodeMessageContent(rawContent)
+    return {
+      id: (m.id as string) || `msg_${Date.now().toString(36)}`,
+      role: (m.role as 'user' | 'assistant') || 'user',
+      parts: decodedParts ?? [{ type: 'text' as const, text: rawContent }],
+      created_at: (m.created_at as string) || new Date().toISOString(),
+    }
+  })
 }
 
 export async function syncMessagesToStore(
   sessionId: string,
   messages: Message[],
 ): Promise<void> {
-  // Convert OV Message[] to flat rows for our SQLite store
-  const rows = messages.map((m) => {
-    const textContent = m.parts
-      .filter((p) => p.type === 'text')
-      .map((p) => (p as { text: string }).text)
-      .join('\n')
-    return {
-      id: m.id,
-      role: m.role,
-      content: textContent,
-      created_at: m.created_at,
-    }
-  })
+  // Convert OV Message[] to flat rows for our SQLite store. For assistant
+  // messages that carry tool calls, we serialize all parts as JSON in
+  // content; user/text-only messages keep the plain-text shape (so old rows
+  // remain readable even if a schema migration never runs).
+  const rows = messages.map((m) => ({
+    id: m.id,
+    role: m.role,
+    content: encodeMessageContent(m.parts),
+    created_at: m.created_at,
+  }))
   await fetch(ourUrl(`/api/chat/sessions/${encodeURIComponent(sessionId)}/messages`), {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },

@@ -147,6 +147,7 @@ class StatsResponse(BaseModel):
     db_path: str
     rag_enabled: bool
     research_resource_count: int = 0
+    financial_record_count: int = 0
 
 
 def _count_ov_resources() -> int:
@@ -352,9 +353,16 @@ def create_app() -> FastAPI:
                     "SELECT COUNT(DISTINCT stock_code), COUNT(DISTINCT report_period), MAX(report_period) "
                     "FROM core_performance_indicators_sheet"
                 ).fetchone()
+                # A "financial record" = one company's one period in the core table.
+                # All 4 statement tables share this dimension so a single count is
+                # representative; multiply by 4 if you want a per-cell total.
+                record_rows = conn.execute(
+                    "SELECT COUNT(*) FROM core_performance_indicators_sheet"
+                ).fetchone()
         except sqlite3.Error as exc:
             raise HTTPException(status_code=500, detail=f"DB error: {exc}") from exc
         company_count, period_count, latest = rows or (0, 0, None)
+        record_count = (record_rows[0] if record_rows else 0) or 0
         return StatsResponse(
             company_count=company_count or 0,
             report_period_count=period_count or 0,
@@ -362,6 +370,7 @@ def create_app() -> FastAPI:
             db_path=DB_PATH,
             rag_enabled=_is_research_engine(get_engine()),
             research_resource_count=_count_ov_resources(),
+            financial_record_count=record_count,
         )
 
     def _persist_exchange(session_id: str, question: str, response: AskResponse) -> None:
@@ -626,7 +635,83 @@ def create_app() -> FastAPI:
     # proxy into the same embedded SyncOpenViking instance held by the
     # engine — no separate OV server is spawned.
 
+    _OV_HTTP_URL = os.environ.get("OV_HTTP_URL", "http://127.0.0.1:18792")
+    _ov_http_client: Any = None
+
+    class _OVProxyClient:
+        """Thin wrapper that translates SyncOpenViking-style method calls
+        (client.ls(uri, **kwargs) / client.find(query, ...)) into HTTP calls
+        against a running openviking-server on :18792.
+
+        Lets the existing fs_ls / content_read / search routes keep using
+        client.<method>(...) without each caller having to know about HTTP.
+        """
+
+        def __init__(self, base_url: str) -> None:
+            import httpx
+            self._c = httpx.Client(base_url=base_url, timeout=30.0)
+
+        def _get(self, path: str, params: dict[str, Any] | None = None) -> Any:
+            r = self._c.get(path, params=params or {})
+            r.raise_for_status()
+            data = r.json()
+            return data.get("result", data)
+
+        def _post(self, path: str, json: dict[str, Any]) -> Any:
+            r = self._c.post(path, json=json)
+            r.raise_for_status()
+            data = r.json()
+            return data.get("result", data)
+
+        # Methods the routes call:
+        def ls(self, uri: str, **kwargs: Any) -> Any:
+            params = {"uri": uri, **{k: v for k, v in kwargs.items() if v is not None and not isinstance(v, bool)}}
+            for k, v in kwargs.items():
+                if isinstance(v, bool):
+                    params[k] = "true" if v else "false"
+            return self._get("/api/v1/fs/ls", params=params)
+
+        def tree(self, uri: str, **kwargs: Any) -> Any:
+            params = {"uri": uri, **{k: v for k, v in kwargs.items() if v is not None and not isinstance(v, bool)}}
+            for k, v in kwargs.items():
+                if isinstance(v, bool):
+                    params[k] = "true" if v else "false"
+            return self._get("/api/v1/fs/tree", params=params)
+
+        def stat(self, uri: str) -> Any:
+            return self._get("/api/v1/fs/stat", params={"uri": uri})
+
+        def read_content(self, uri: str, offset: int = 0, limit: int = -1) -> Any:
+            return self._get("/api/v1/content/read", params={"uri": uri, "offset": offset, "limit": limit})
+
+        def find(self, query: str, **kwargs: Any) -> Any:
+            payload = {"query": query, **{k: v for k, v in kwargs.items() if v is not None}}
+            return self._post("/api/v1/search/find", json=payload)
+
+        def search(self, query: str, **kwargs: Any) -> Any:
+            payload = {"query": query, **{k: v for k, v in kwargs.items() if v is not None}}
+            return self._post("/api/v1/search/search", json=payload)
+
     def _require_ov() -> Any:
+        """Prefer the locally-running openviking-server over the engine's
+        embedded client — vikingbot holds the LevelDB lock in-process, so
+        FastAPI can't open a second embedded client on the same data dir.
+        Falls back to engine.client if the HTTP server is down.
+        """
+        nonlocal _ov_http_client
+        if _ov_http_client is None:
+            try:
+                import httpx
+                with httpx.Client(base_url=_OV_HTTP_URL, timeout=3.0) as c:
+                    resp = c.get("/health")
+                    if resp.status_code == 200:
+                        _ov_http_client = _OVProxyClient(_OV_HTTP_URL)
+            except Exception:  # noqa: BLE001
+                pass
+        if _ov_http_client is not None:
+            return _ov_http_client
+        # Fallback: engine-embedded client (works only if vikingbot not holding
+        # the lock — e.g. in headless CI).
         client = getattr(get_engine(), "client", None)
         if client is None:
             raise HTTPException(status_code=503, detail="OpenViking client unavailable")
@@ -865,10 +950,15 @@ def create_app() -> FastAPI:
                     "SELECT COUNT(DISTINCT stock_code), COUNT(DISTINCT report_period), MAX(report_period) "
                     "FROM core_performance_indicators_sheet"
                 ).fetchone()
+                record_rows = conn.execute(
+                    "SELECT COUNT(*) FROM core_performance_indicators_sheet"
+                ).fetchone()
             companies, periods, latest = db_stats or (0, 0, None)
+            records = (record_rows[0] if record_rows else 0) or 0
             db_ok = True
         except Exception:  # noqa: BLE001
             companies, periods, latest = 0, 0, None
+            records = 0
             db_ok = False
 
         # Check vikingbot alive → implies OV is initialized
@@ -889,6 +979,7 @@ def create_app() -> FastAPI:
                 "db_path": DB_PATH,
                 "rag_enabled": vb_ok,
                 "research_resource_count": research_count,
+                "financial_record_count": records,
             },
             "user_id": "embedded",
         })

@@ -641,6 +641,7 @@ export function HomePage() {
   const companyCount = asNumber(taidiRecord.company_count)
   const reportPeriodCount = asNumber(taidiRecord.report_period_count)
   const researchResourceCount = asNumber(taidiRecord.research_resource_count)
+  const financialRecordCount = asNumber(taidiRecord.financial_record_count)
   const latestPeriod = asString(taidiRecord.latest_period)
 
   return (
@@ -650,30 +651,30 @@ export function HomePage() {
         <StatCard
           title="上市公司"
           value={companyCount.toLocaleString()}
-          subtitle="财报已入库的中药公司"
+          subtitle="已入库的公司数量"
+          isLoading={systemStatus.isLoading}
+          isError={systemStatus.isError}
+        />
+        <StatCard
+          title="财报记录"
+          value={financialRecordCount.toLocaleString()}
+          subtitle={`SQLite 4 张表 · 覆盖 ${reportPeriodCount} 期`}
           isLoading={systemStatus.isLoading}
           isError={systemStatus.isError}
         />
         <StatCard
           title="研报资源"
           value={researchResourceCount.toLocaleString()}
-          subtitle="RAG 已索引的研报文档"
+          subtitle="OpenViking 已索引"
           isLoading={systemStatus.isLoading}
           isError={systemStatus.isError}
         />
         <StatCard
-          title="报告期"
-          value={reportPeriodCount.toLocaleString()}
-          subtitle={latestPeriod ? `最新：${latestPeriod}` : '覆盖的财报期间数'}
+          title="最新报告期"
+          value={latestPeriod || '—'}
+          subtitle={`共 ${reportPeriodCount} 期 · Token ${asNumber(tokenRecord.total_tokens).toLocaleString()}`}
           isLoading={systemStatus.isLoading}
           isError={systemStatus.isError}
-        />
-        <StatCard
-          title="Token 消耗"
-          value={asNumber(tokenRecord.total_tokens).toLocaleString()}
-          subtitle={`LLM ${asNumber(tokenLlm.total_tokens).toLocaleString()} · Embed ${asNumber(tokenEmb.total_tokens).toLocaleString()}`}
-          isLoading={tokenStats.isLoading}
-          isError={tokenStats.isError}
         />
       </div>
 
