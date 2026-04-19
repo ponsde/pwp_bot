@@ -167,14 +167,32 @@ def _count_ov_resources() -> int:
 def _resource_breakdown() -> dict[str, Any]:
     """Breakdown of indexed resources by 研报 category (个股 vs 行业).
 
-    Cross-references OV's indexed resource names against the source PDF tree
-    at ``data/sample/示例数据/附件5：研报数据/{个股研报,行业研报}/``. Uses
-    the same sanitizer as ``scripts/index_research.py`` so names line up.
+    Reads a pre-built manifest at ``.openviking/resources_manifest.json``
+    produced by ``scripts/build_resource_manifest.py``. Using a manifest
+    (instead of re-deriving from 附件5 PDFs) means the deployed repo
+    doesn't need the source PDFs present — Railway and any fresh clone
+    get the breakdown straight from the committed JSON.
+
+    Falls back to a filesystem cross-reference against the source PDF tree
+    if the manifest is missing (dev workflow before the manifest is built).
     """
     from pathlib import Path
+    import json
     import re
     root = Path(__file__).resolve().parent.parent
     resources_dir = root / ".openviking" / "viking" / "default" / "resources"
+    manifest_path = root / ".openviking" / "resources_manifest.json"
+
+    # Preferred path: use the committed manifest.
+    if manifest_path.exists():
+        try:
+            data = json.loads(manifest_path.read_text(encoding="utf-8"))
+            counts = {k: len(data.get(k, [])) for k in ("stock", "industry", "other")}
+            return {"total": sum(counts.values()), "by_category": counts}
+        except (OSError, ValueError):
+            pass  # fall through to filesystem derivation
+
+    # Fallback: derive from source PDFs if present.
     research_root = root / "data" / "sample" / "示例数据" / "附件5：研报数据"
     if not resources_dir.exists() or not research_root.exists():
         return {"total": _count_ov_resources(), "by_category": {"stock": 0, "industry": 0, "other": 0}}
@@ -189,7 +207,6 @@ def _resource_breakdown() -> dict[str, Any]:
         if not rsrc_dir.is_dir():
             continue
         name = rsrc_dir.name
-        # Strip trailing _N suffixes OV adds on collision
         base = re.sub(r"_\d+$", "", name)
         cat = cat_map.get(base) or cat_map.get(name) or "other"
         counts[cat] += 1
