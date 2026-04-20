@@ -199,6 +199,10 @@ ALIASES = {
 
 PREFIX_RE = re.compile(r"^(?:[一二三四五六七八九十]+、|[（(][一二三四五六七八九十\d]+[)）]|\d+[\.、]|[加减]：|其中[:：])")
 BRACKET_NOTE_RE = re.compile(r"[（(][^）)]*[)）]")
+# Matches an unclosed trailing bracket, e.g. pdfplumber truncates
+# "四、利润总额（亏损总额以"－"号" off before the closing ）.
+# Without this strip, the unclosed "（..." stays on the label and prevents alias match.
+UNCLOSED_TAIL_BRACKET_RE = re.compile(r"[（(][^）)]*$")
 UNIT_RE = re.compile(r"单位[：:]\s*(?:人民币)?(元|万元|千元|百万元)")
 NUMERIC_RE = re.compile(r"-?\d+(?:,\d{3})*(?:\.\d+)?%?")
 
@@ -511,6 +515,7 @@ class TableExtractor:
                 break
             text = new_text.strip()
         text = BRACKET_NOTE_RE.sub("", text).strip()
+        text = UNCLOSED_TAIL_BRACKET_RE.sub("", text).strip()
         text = text.replace("/", "").replace("－", "-")
         text = re.sub(r"[：:、,，。\s]+", "", text)
         return text
