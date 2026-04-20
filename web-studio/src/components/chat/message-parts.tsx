@@ -101,7 +101,9 @@ export function ToolCallBlock({ toolName, args, result, isError, isRunning }: To
   const refs = !isError && result ? extractReferences(result) : []
   const hasRefs = refs.length > 0
   return (
-    <details className="my-2 rounded-lg border border-border/30 bg-muted/20" open={hasRefs}>
+    // Tool blocks stay collapsed by default — click to expand. Having
+    // openviking_search auto-open flooded the thread with long chunks.
+    <details className="my-2 rounded-lg border border-border/30 bg-muted/20">
       <summary className="flex cursor-pointer items-center gap-2 px-3 py-2 text-xs select-none">
         <ToolStatusIcon isRunning={isRunning} isError={isError} />
         <WrenchIcon className="size-3 text-muted-foreground/60" />

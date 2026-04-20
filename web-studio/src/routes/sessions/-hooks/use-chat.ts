@@ -385,7 +385,27 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     setMessages((prev) => {
       const next = prev.map((m) => {
         if (m.id !== id || m.role !== 'assistant') return m
-        const newParts = m.parts.map((p) => p.type === 'text' ? { ...p, text: newContent } : p)
+        // The edit textarea shows all text segments joined; saving used to
+        // write newContent into every text part (duplicating it and
+        // scrambling segment/tool order). Now: keep tool parts in place,
+        // collapse all text parts into a single part at the position of
+        // the first existing text part. Messages with no text parts (pure
+        // tools) get one appended at the end.
+        const newParts: MessagePart[] = []
+        let placedText = false
+        for (const p of m.parts) {
+          if (p.type === 'text') {
+            if (!placedText) {
+              newParts.push({ type: 'text', text: newContent })
+              placedText = true
+            }
+            // Drop subsequent text parts — their content was folded into
+            // newContent already via getTextFromParts.
+          } else {
+            newParts.push(p)
+          }
+        }
+        if (!placedText) newParts.push({ type: 'text', text: newContent })
         return { ...m, parts: newParts }
       })
       if (persistMessages) syncMessagesToStore(sessionId, next).catch(() => {})

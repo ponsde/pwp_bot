@@ -164,7 +164,18 @@ export function MessageList({ messages, attachmentPreviews, streaming, onDeleteM
         const sameRole = prev?.role === msg.role
         const isLast = idx === messages.length - 1
         return msg.role === 'user' ? (
-          <UserMessage key={msg.id} message={msg} compact={sameRole} attachmentPreviews={attachmentPreviews} onDelete={onDeleteMessage} onEdit={onEditUserMessage} disabled={isStreaming} />
+          <UserMessage
+            key={msg.id}
+            message={msg}
+            compact={sameRole}
+            attachmentPreviews={attachmentPreviews}
+            onDelete={onDeleteMessage}
+            onEdit={onEditUserMessage}
+            // Retry is enabled only when this user message has an assistant
+            // reply after it — clicking retry drops that reply and asks again.
+            onRetry={!isLast && messages[idx + 1]?.role === 'assistant' ? onRetry : undefined}
+            disabled={isStreaming}
+          />
         ) : (
           <AssistantMessage key={msg.id} message={msg} compact={sameRole} isLast={isLast} onDelete={onDeleteMessage} onEdit={onEditAssistantMessage} onRetry={onRetry} disabled={isStreaming} />
         )
@@ -184,6 +195,7 @@ const UserMessage = memo(function UserMessage({
   attachmentPreviews,
   onDelete,
   onEdit,
+  onRetry,
   disabled,
 }: {
   message: Message
@@ -191,6 +203,7 @@ const UserMessage = memo(function UserMessage({
   attachmentPreviews?: Map<string, string>
   onDelete?: (id: string) => void
   onEdit?: (id: string, newContent: string) => void
+  onRetry?: () => void
   disabled?: boolean
 }) {
   const rawText = getTextFromParts(message)
@@ -217,6 +230,9 @@ const UserMessage = memo(function UserMessage({
         <CopyButton text={text || rawText} />
         {!disabled && onEdit && (
           <ActionBtn icon={PencilIcon} title="编辑" onClick={() => { setEditText(rawText); setEditing(true) }} />
+        )}
+        {!disabled && onRetry && (
+          <ActionBtn icon={RefreshCwIcon} title="重试" onClick={onRetry} />
         )}
         {!disabled && onDelete && (
           <ActionBtn icon={Trash2Icon} title="删除" onClick={() => onDelete(message.id)} variant="destructive" />
