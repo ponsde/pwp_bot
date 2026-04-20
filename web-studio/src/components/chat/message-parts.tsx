@@ -169,14 +169,15 @@ const REF_KEYS = ['references', 'resources', 'memories', 'sources', 'matches', '
 
 function extractReferences(raw: string): Ref[] {
   if (!raw || raw.length > 200_000) return []
-  // Try plain JSON first; openviking / mcp tools sometimes return a Python
-  // repr dict ({'...': ...} with single quotes). Do a lightweight fallback.
+  // Try plain JSON first; openviking tools return a Python repr dict
+  // ({'key': 'val', 'abstract': "val with 'apostrophe'"}). Naive s/'/"/g
+  // corrupts embedded apostrophes; use a state-machine repr→JSON converter.
   let obj: unknown = null
   try {
     obj = JSON.parse(raw)
   } catch {
     try {
-      obj = JSON.parse(raw.replace(/'/g, '"'))
+      obj = JSON.parse(pyReprToJson(raw))
     } catch {
       return []
     }
@@ -199,6 +200,50 @@ function extractReferences(raw: string): Ref[] {
   }
   return []
 }
+
+/**
+ * Convert Python dict/list repr to JSON. Walks char-by-char tracking
+ * single- vs double-quoted string state so apostrophes inside values
+ * like "User's memory" survive. Also normalizes Python literals
+ * True/False/None → true/false/null.
+ */
+function pyReprToJson(src: string): string {
+  let out = ''
+  let i = 0
+  const n = src.length
+  let inSingle = false
+  let inDouble = false
+  while (i < n) {
+    const c = src[i]
+    // Preserve escape sequences verbatim inside any string
+    if ((inSingle || inDouble) && c === '\\' && i + 1 < n) {
+      out += c + src[i + 1]
+      i += 2
+      continue
+    }
+    if (!inDouble && !inSingle) {
+      // Outside any string — recognize Python literals
+      if (c === "'") { inSingle = true; out += '"' }
+      else if (c === '"') { inDouble = true; out += '"' }
+      else if (src.startsWith('True', i)) { out += 'true'; i += 4; continue }
+      else if (src.startsWith('False', i)) { out += 'false'; i += 5; continue }
+      else if (src.startsWith('None', i)) { out += 'null'; i += 4; continue }
+      else out += c
+    } else if (inSingle) {
+      // Single-quoted string — close, but pre-escape any inner " as \"
+      if (c === "'") { inSingle = false; out += '"' }
+      else if (c === '"') { out += '\\"' }
+      else out += c
+    } else {
+      // Double-quoted string — normal JSON rules, but keep apostrophes raw
+      if (c === '"') { inDouble = false; out += '"' }
+      else out += c
+    }
+    i++
+  }
+  return out
+}
+
 
 function coerceRefs(items: unknown[]): Ref[] {
   const out: Ref[] = []
