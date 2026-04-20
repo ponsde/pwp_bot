@@ -259,14 +259,20 @@ class TableExtractor:
         }
         warnings: list[str] = []
         page_units = [self._detect_text_unit(text) for text in parsed_pdf.page_texts]
+        # label_specificity[table_type][field] = len of the alias-key that last wrote it.
+        # A less-specific label (shorter key) cannot overwrite a more-specific one. This
+        # defeats cases like page 160 in 金花股份 2023FY where an auxiliary joint-venture
+        # table contains "净利润" (3 chars) and would otherwise clobber "归属于母公司股东的净利润"
+        # (12 chars) already written from the main 利润表.
+        label_specificity: dict[str, dict[str, int]] = {table_name: {} for table_name in self.schema}
         for table in parsed_pdf.tables:
             if not table.table_type:
                 continue
             source_unit = self._detect_source_unit(table, page_units)
             if table.table_type == "core_performance_indicators_sheet":
-                self._extract_core_metrics(table, records[table.table_type], parsed_pdf.report_period, source_unit, warnings)
+                self._extract_core_metrics(table, records[table.table_type], parsed_pdf.report_period, source_unit, warnings, label_specificity[table.table_type])
             else:
-                self._extract_statement_table(table, table.table_type, records[table.table_type], source_unit, warnings)
+                self._extract_statement_table(table, table.table_type, records[table.table_type], source_unit, warnings, label_specificity[table.table_type])
 
         self._fill_income_sheet_from_page_text(parsed_pdf, records["income_sheet"])
         self._fill_bank_report_fallbacks(parsed_pdf, records)
@@ -280,7 +286,10 @@ class TableExtractor:
         target: dict[str, Any],
         source_unit: str | None,
         warnings: list[str],
+        label_specificity: dict[str, int] | None = None,
     ) -> None:
+        if label_specificity is None:
+            label_specificity = {}
         aliases = ALIASES[table_type]
         rows = [
             [self._clean_text(cell) if cell not in (None, "") else "" for cell in row]
@@ -321,19 +330,26 @@ class TableExtractor:
                 pending_label = label
                 continue
             converted = self._convert_statement_value(table_type, field, value, source_unit)
-            # Aggregate totals: magnitude-guarded overwrite (see _should_overwrite_aggregate).
-            # Prevents garbage (from misclassified auxiliary tables) from clobbering real values.
+            # Aggregate totals: magnitude-guarded + label-specificity overwrite.
+            # - magnitude: reject garbage (< 100 万元) or wildly off-scale new values
+            # - specificity: reject less-specific alias (e.g. "净利润" after "归属于母公司股东的净利润")
             aggregate_fields = {
                 "asset_total_assets", "liability_total_liabilities", "equity_total_equity",
                 "total_operating_revenue", "net_profit", "operating_profit", "total_profit",
                 "net_cash_flow", "operating_cf_net_amount",
                 "investing_cf_net_amount", "financing_cf_net_amount",
             }
+            new_spec = len(label)
+            existing_spec = label_specificity.get(field, 0)
+            if new_spec < existing_spec:
+                continue  # less-specific label, don't overwrite
             if field in aggregate_fields:
                 if _should_overwrite_aggregate(target.get(field), converted):
                     target[field] = converted
+                    label_specificity[field] = new_spec
             elif field not in target:
                 target[field] = converted
+                label_specificity[field] = new_spec
 
     def _extract_core_metrics(
         self,
@@ -342,7 +358,10 @@ class TableExtractor:
         report_period: str,
         source_unit: str | None,
         warnings: list[str],
+        label_specificity: dict[str, int] | None = None,
     ) -> None:
+        if label_specificity is None:
+            label_specificity = {}
         aliases = ALIASES["core_performance_indicators_sheet"]
         header = self._extract_header_cells(table)
         year = report_period[:4]
@@ -390,12 +409,18 @@ class TableExtractor:
             value = self._select_core_value(row, header, period_key, year)
             if value is None:
                 value = self._select_value_from_candidates(combined_numeric_values, period_key)
+            new_spec = len(label)
+            existing_spec = label_specificity.get(field, 0)
+            if new_spec < existing_spec:
+                idx += max(1, consumed_rows + 1)
+                continue
             if value is not None:
                 converted = self._convert_value(
                     value, self._get_field_meta("core_performance_indicators_sheet", field), source_unit
                 )
                 if _should_overwrite_aggregate(target.get(field), converted):
                     target[field] = converted
+                    label_specificity[field] = new_spec
             idx += max(1, consumed_rows + 1)
 
     def _compute_derived_fields(self, records: dict[str, dict[str, Any]]) -> None:
