@@ -110,6 +110,11 @@ def main() -> int:
                 run.font.name = "Consolas"
                 run._element.rPr.rFonts.set(qn("w:eastAsia"), "Consolas")
                 run.font.size = Pt(9)
+                # Keep the whole block on one page so ASCII diagrams don't
+                # get split across page breaks. keep_together binds the
+                # paragraph's own lines; keep_with_next prevents splitting
+                # from the preceding heading/intro paragraph.
+                p.paragraph_format.keep_together = True
                 code_buf = []
             i += 1
             continue
