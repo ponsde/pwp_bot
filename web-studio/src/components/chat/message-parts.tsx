@@ -98,12 +98,19 @@ interface ToolCallBlockProps {
 }
 
 export function ToolCallBlock({ toolName, args, result, isError, isRunning }: ToolCallBlockProps) {
+  const refs = !isError && result ? extractReferences(result) : []
+  const hasRefs = refs.length > 0
   return (
-    <details className="my-2 rounded-lg border border-border/30 bg-muted/20">
+    <details className="my-2 rounded-lg border border-border/30 bg-muted/20" open={hasRefs}>
       <summary className="flex cursor-pointer items-center gap-2 px-3 py-2 text-xs select-none">
         <ToolStatusIcon isRunning={isRunning} isError={isError} />
         <WrenchIcon className="size-3 text-muted-foreground/60" />
         <span className="font-mono font-medium text-foreground/80">{toolName}</span>
+        {hasRefs && (
+          <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+            {refs.length} 条引用
+          </span>
+        )}
         <span className="ml-auto text-muted-foreground/60 text-[11px]">
           {isRunning ? '执行中...' : isError ? '失败' : '完成'}
         </span>
@@ -119,10 +126,18 @@ export function ToolCallBlock({ toolName, args, result, isError, isRunning }: To
             </pre>
           </div>
         )}
+        {hasRefs && (
+          <div>
+            <div className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/50">
+              参考文献 · {refs.length} 条
+            </div>
+            <ReferencesList refs={refs} />
+          </div>
+        )}
         {result !== undefined && (
           <div>
             <div className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/50">
-              结果
+              原始返回
             </div>
             <pre
               className={cn(
@@ -137,6 +152,116 @@ export function ToolCallBlock({ toolName, args, result, isError, isRunning }: To
       </div>
     </details>
   )
+}
+
+// ---------------------------------------------------------------------------
+// References extraction — detects RAG-style references in tool output
+// ---------------------------------------------------------------------------
+
+interface Ref {
+  paper_path?: string
+  text?: string
+  paper_image?: string
+  title?: string
+}
+
+const REF_KEYS = ['references', 'resources', 'memories', 'sources', 'matches', 'results'] as const
+
+function extractReferences(raw: string): Ref[] {
+  if (!raw || raw.length > 200_000) return []
+  // Try plain JSON first; openviking / mcp tools sometimes return a Python
+  // repr dict ({'...': ...} with single quotes). Do a lightweight fallback.
+  let obj: unknown = null
+  try {
+    obj = JSON.parse(raw)
+  } catch {
+    try {
+      obj = JSON.parse(raw.replace(/'/g, '"'))
+    } catch {
+      return []
+    }
+  }
+  if (!obj || typeof obj !== 'object') return []
+  const root = obj as Record<string, unknown>
+  for (const key of REF_KEYS) {
+    const arr = root[key]
+    if (Array.isArray(arr)) return coerceRefs(arr)
+  }
+  // Nested shapes: e.g. {"data": {"resources": [...]}} or {"result": {...}}
+  for (const v of Object.values(root)) {
+    if (v && typeof v === 'object') {
+      const inner = v as Record<string, unknown>
+      for (const key of REF_KEYS) {
+        const arr = inner[key]
+        if (Array.isArray(arr)) return coerceRefs(arr)
+      }
+    }
+  }
+  return []
+}
+
+function coerceRefs(items: unknown[]): Ref[] {
+  const out: Ref[] = []
+  for (const item of items) {
+    if (!item || typeof item !== 'object') continue
+    const it = item as Record<string, unknown>
+    const pp = pickStr(it, ['paper_path', 'path', 'file', 'source', 'uri'])
+    const text = pickStr(it, ['text', 'content', 'snippet', 'excerpt', 'summary'])
+    const paper_image = pickStr(it, ['paper_image', 'image', 'img'])
+    const title = pickStr(it, ['title', 'name'])
+    if (pp || text || title) out.push({ paper_path: pp, text, paper_image, title })
+  }
+  return out
+}
+
+function pickStr(obj: Record<string, unknown>, keys: string[]): string | undefined {
+  for (const k of keys) {
+    const v = obj[k]
+    if (typeof v === 'string' && v.trim().length > 0) return v
+  }
+  return undefined
+}
+
+function ReferencesList({ refs }: { refs: Ref[] }) {
+  return (
+    <ul className="space-y-1.5">
+      {refs.slice(0, 12).map((r, i) => (
+        <li
+          key={i}
+          className="rounded-md border border-border/40 bg-background/60 px-2.5 py-1.5"
+        >
+          <div className="flex items-start gap-2">
+            <span className="mt-0.5 inline-flex size-4 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[10px] font-semibold text-primary">
+              {i + 1}
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-xs font-medium text-foreground/90">
+                {shortPath(r.paper_path) || r.title || '（未命名）'}
+              </div>
+              {r.text && (
+                <div className="mt-0.5 line-clamp-2 text-[11px] leading-relaxed text-muted-foreground">
+                  {r.text}
+                </div>
+              )}
+            </div>
+          </div>
+        </li>
+      ))}
+      {refs.length > 12 && (
+        <li className="pl-6 text-[11px] text-muted-foreground/70">
+          …还有 {refs.length - 12} 条
+        </li>
+      )}
+    </ul>
+  )
+}
+
+function shortPath(p?: string): string | undefined {
+  if (!p) return undefined
+  // Keep just the filename for display
+  const clean = p.replace(/^viking:\/\/[^/]*\//, '').replace(/^\.\//, '')
+  const parts = clean.split('/')
+  return parts[parts.length - 1] || clean
 }
 
 function ToolStatusIcon({ isRunning, isError }: { isRunning: boolean; isError?: boolean }) {
