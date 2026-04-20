@@ -100,10 +100,12 @@ interface ToolCallBlockProps {
 export function ToolCallBlock({ toolName, args, result, isError, isRunning }: ToolCallBlockProps) {
   const refs = !isError && result ? extractReferences(result) : []
   const hasRefs = refs.length > 0
+  const chartUrl = !isError && result ? extractChartUrl(result) : null
   return (
-    // Tool blocks stay collapsed by default — click to expand. Having
-    // openviking_search auto-open flooded the thread with long chunks.
-    <details className="my-2 rounded-lg border border-border/30 bg-muted/20">
+    <>
+      {/* Tool blocks stay collapsed by default — click to expand. Having
+          openviking_search auto-open flooded the thread with long chunks. */}
+      <details className="my-2 rounded-lg border border-border/30 bg-muted/20">
       <summary className="flex cursor-pointer items-center gap-2 px-3 py-2 text-xs select-none">
         <ToolStatusIcon isRunning={isRunning} isError={isError} />
         <WrenchIcon className="size-3 text-muted-foreground/60" />
@@ -111,6 +113,11 @@ export function ToolCallBlock({ toolName, args, result, isError, isRunning }: To
         {hasRefs && (
           <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
             {refs.length} 条引用
+          </span>
+        )}
+        {chartUrl && (
+          <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+            图表
           </span>
         )}
         <span className="ml-auto text-muted-foreground/60 text-[11px]">
@@ -152,8 +159,47 @@ export function ToolCallBlock({ toolName, args, result, isError, isRunning }: To
           </div>
         )}
       </div>
-    </details>
+      </details>
+      {/* Chart images live outside the collapsible so they're always visible
+          — that's what the user asked about (\"problem solved but no image\"). */}
+      {chartUrl && (
+        <div className="my-2 overflow-hidden rounded-lg border border-border/30 bg-background">
+          <img
+            src={chartUrl}
+            alt="chart"
+            className="block w-full max-w-2xl object-contain"
+            loading="lazy"
+          />
+        </div>
+      )}
+    </>
   )
+}
+
+/**
+ * Pull a chart URL out of the mcp_fin_query tool result. Expected shape:
+ *   {"chart_url": "/charts/xxx.jpg", ...} (or null when no chart generated).
+ * Returns null when absent / unparseable. The URL is left same-origin so
+ * the FastAPI /charts StaticFiles mount serves it.
+ */
+function extractChartUrl(raw: string): string | null {
+  if (!raw || raw.length > 200_000) return null
+  let obj: unknown = null
+  try { obj = JSON.parse(raw) } catch {
+    try { obj = JSON.parse(pyReprToJson(raw)) } catch { return null }
+  }
+  if (!obj || typeof obj !== 'object') return null
+  const root = obj as Record<string, unknown>
+  const direct = root.chart_url
+  if (typeof direct === 'string' && direct.trim()) return direct.trim()
+  // Nested one level deep for future-proofing
+  for (const v of Object.values(root)) {
+    if (v && typeof v === 'object') {
+      const inner = (v as Record<string, unknown>).chart_url
+      if (typeof inner === 'string' && inner.trim()) return inner.trim()
+    }
+  }
+  return null
 }
 
 // ---------------------------------------------------------------------------
