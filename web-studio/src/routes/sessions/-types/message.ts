@@ -35,6 +35,12 @@ export interface Message {
   role: 'user' | 'assistant'
   parts: MessagePart[]
   created_at: string
+  /**
+   * Alternate reply versions produced by retrying an assistant message.
+   * versions[version_index] === parts. Undefined until the first retry.
+   */
+  versions?: MessagePart[][]
+  version_index?: number
 }
 
 /** Helpers */

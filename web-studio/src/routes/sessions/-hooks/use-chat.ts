@@ -147,13 +147,25 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     setIteration(0)
   }, [abort, initialMessages])
 
-  const send = useCallback(async (message: string) => {
+  /**
+   * Internal send. If ``retryTargetId`` is given, we do NOT push a fresh user
+   * message (the original is preserved) and on completion we append the new
+   * reply as an additional version of the existing assistant message at that
+   * id. Otherwise the normal flow: add user message, stream, append assistant.
+   */
+  const sendInternal = useCallback(async (
+    message: string,
+    opts: { retryTargetId?: string } = {},
+  ) => {
     if (status === 'streaming') return
 
-    const isFirstExchange = messagesRef.current.length === 0
+    const isRetry = Boolean(opts.retryTargetId)
+    const isFirstExchange = !isRetry && messagesRef.current.length === 0
 
-    const userMsg = createUserMessage(message)
-    setMessages((prev) => [...prev, userMsg])
+    if (!isRetry) {
+      const userMsg = createUserMessage(message)
+      setMessages((prev) => [...prev, userMsg])
+    }
     setStatus('streaming')
     setError(undefined)
     setStreamingContent('')
@@ -313,7 +325,22 @@ export function useChat(options: UseChatOptions): UseChatReturn {
       streamEnded = true
 
       const assistantMsg = buildAssistantMessage(segments)
-      setMessages((prev) => [...prev, assistantMsg])
+      if (isRetry && opts.retryTargetId) {
+        const targetId = opts.retryTargetId
+        setMessages((prev) => prev.map((m) => {
+          if (m.id !== targetId) return m
+          const prevVersions = m.versions ?? [m.parts]
+          const versions = [...prevVersions, assistantMsg.parts]
+          return {
+            ...m,
+            parts: assistantMsg.parts,
+            versions,
+            version_index: versions.length - 1,
+          }
+        }))
+      } else {
+        setMessages((prev) => [...prev, assistantMsg])
+      }
       setStatus('idle')
       setStreamingContent('')
       setStreamingToolCalls([])
@@ -345,7 +372,10 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     } finally {
       abortRef.current = null
     }
-  }, [status, sessionId, persistMessages])
+  }, [status, sessionId, persistMessages, qc])
+
+  /** Public send — always starts a fresh exchange. */
+  const send = useCallback((message: string) => sendInternal(message), [sendInternal])
 
   const deleteMessage = useCallback((id: string) => {
     setMessages((prev) => {
@@ -413,20 +443,45 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     })
   }, [sessionId, persistMessages])
 
-  const retry = useCallback(() => {
+  /**
+   * Retry a specific assistant message by generating an alternative reply
+   * and appending it as a new version slot. The previous reply is preserved
+   * under versions[] so the user can switch back via the ⟨ n/m ⟩ pager.
+   */
+  const retryAssistant = useCallback((assistantId: string) => {
     if (status === 'streaming') return
+    const msgs = messagesRef.current
+    const idx = msgs.findIndex((m) => m.id === assistantId)
+    if (idx <= 0) return
+    const user = msgs[idx - 1]
+    if (user.role !== 'user') return
+    const userText = user.parts
+      .filter((p) => p.type === 'text')
+      .map((p) => (p as { text: string }).text)
+      .join('\n')
+    void sendInternal(userText, { retryTargetId: assistantId })
+  }, [status, sendInternal])
+
+  /** Retry the last assistant reply. */
+  const retry = useCallback(() => {
+    const msgs = messagesRef.current
+    const last = msgs[msgs.length - 1]
+    if (!last || last.role !== 'assistant') return
+    retryAssistant(last.id)
+  }, [retryAssistant])
+
+  /** Switch which version of an assistant message is active. */
+  const switchVersion = useCallback((assistantId: string, nextIndex: number) => {
     setMessages((prev) => {
-      if (prev.length < 2) return prev
-      const last = prev[prev.length - 1]
-      if (last.role !== 'assistant') return prev
-      const userMsg = prev[prev.length - 2]
-      if (userMsg.role !== 'user') return prev
-      const userText = userMsg.parts.filter((p) => p.type === 'text').map((p) => (p as { text: string }).text).join('\n')
-      const trimmed = prev.slice(0, -1)
-      setTimeout(() => { void send(userText) }, 0)
-      return trimmed
+      const next = prev.map((m) => {
+        if (m.id !== assistantId || !m.versions || m.versions.length <= 1) return m
+        const clamped = Math.max(0, Math.min(m.versions.length - 1, nextIndex))
+        return { ...m, version_index: clamped, parts: m.versions[clamped] }
+      })
+      if (persistMessages) syncMessagesToStore(sessionId, next).catch(() => {})
+      return next
     })
-  }, [status, send])
+  }, [sessionId, persistMessages])
 
   return {
     messages,
@@ -445,5 +500,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     editUserMessage,
     editAssistantMessage,
     retry,
+    retryAssistant,
+    switchVersion,
   }
 }

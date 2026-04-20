@@ -153,31 +153,52 @@ interface MessageListProps {
   onEditUserMessage?: (id: string, newContent: string) => void
   onEditAssistantMessage?: (id: string, newContent: string) => void
   onRetry?: () => void
+  onRetryAssistant?: (assistantId: string) => void
+  onSwitchVersion?: (assistantId: string, nextIndex: number) => void
   isStreaming?: boolean
 }
 
-export function MessageList({ messages, attachmentPreviews, streaming, onDeleteMessage, onEditUserMessage, onEditAssistantMessage, onRetry, isStreaming }: MessageListProps) {
+export function MessageList({
+  messages, attachmentPreviews, streaming,
+  onDeleteMessage, onEditUserMessage, onEditAssistantMessage,
+  onRetry, onRetryAssistant, onSwitchVersion, isStreaming,
+}: MessageListProps) {
   return (
     <>
       {messages.map((msg, idx) => {
         const prev = idx > 0 ? messages[idx - 1] : null
         const sameRole = prev?.role === msg.role
         const isLast = idx === messages.length - 1
-        return msg.role === 'user' ? (
-          <UserMessage
+        if (msg.role === 'user') {
+          const nextAssistant = messages[idx + 1]
+          const canRetry = !!(nextAssistant && nextAssistant.role === 'assistant' && onRetryAssistant)
+          return (
+            <UserMessage
+              key={msg.id}
+              message={msg}
+              compact={sameRole}
+              attachmentPreviews={attachmentPreviews}
+              onDelete={onDeleteMessage}
+              onEdit={onEditUserMessage}
+              // Retry regenerates the NEXT assistant message (keeps previous
+              // as an alternate version) — we pass a thunk capturing its id.
+              onRetry={canRetry ? () => onRetryAssistant!(nextAssistant.id) : undefined}
+              disabled={isStreaming}
+            />
+          )
+        }
+        return (
+          <AssistantMessage
             key={msg.id}
             message={msg}
             compact={sameRole}
-            attachmentPreviews={attachmentPreviews}
+            isLast={isLast}
             onDelete={onDeleteMessage}
-            onEdit={onEditUserMessage}
-            // Retry is enabled only when this user message has an assistant
-            // reply after it — clicking retry drops that reply and asks again.
-            onRetry={!isLast && messages[idx + 1]?.role === 'assistant' ? onRetry : undefined}
+            onEdit={onEditAssistantMessage}
+            onRetry={onRetryAssistant ? () => onRetryAssistant(msg.id) : onRetry}
+            onSwitchVersion={onSwitchVersion}
             disabled={isStreaming}
           />
-        ) : (
-          <AssistantMessage key={msg.id} message={msg} compact={sameRole} isLast={isLast} onDelete={onDeleteMessage} onEdit={onEditAssistantMessage} onRetry={onRetry} disabled={isStreaming} />
         )
       })}
       {streaming && <StreamingAssistantMessage {...streaming} />}
@@ -295,6 +316,7 @@ const AssistantMessage = memo(function AssistantMessage({
   onDelete,
   onEdit,
   onRetry,
+  onSwitchVersion,
   disabled,
 }: {
   message: Message
@@ -303,6 +325,7 @@ const AssistantMessage = memo(function AssistantMessage({
   onDelete?: (id: string) => void
   onEdit?: (id: string, newContent: string) => void
   onRetry?: () => void
+  onSwitchVersion?: (assistantId: string, nextIndex: number) => void
   disabled?: boolean
 }) {
   const textContent = getTextFromParts(message)
@@ -315,6 +338,11 @@ const AssistantMessage = memo(function AssistantMessage({
     setEditing(false)
     if (trimmed !== textContent) onEdit?.(message.id, trimmed)
   }, [editText, textContent, message.id, onEdit])
+
+  const versions = message.versions ?? []
+  const versionCount = versions.length
+  const versionIndex = message.version_index ?? (versionCount ? versionCount - 1 : 0)
+  const hasVersions = versionCount > 1 && !!onSwitchVersion
 
   return (
     <div className={`group/msg flex w-full max-w-3xl gap-3 items-start ${compact ? 'mb-1.5' : 'mb-5'}`}>
@@ -350,13 +378,32 @@ const AssistantMessage = memo(function AssistantMessage({
             </div>
           </div>
         )}
+        {hasVersions && !editing && (
+          <div className="mt-2 flex items-center gap-1 text-[11px] text-muted-foreground/70">
+            <button
+              type="button"
+              className="inline-flex size-5 items-center justify-center rounded-md hover:bg-accent disabled:opacity-30 disabled:cursor-not-allowed"
+              onClick={() => onSwitchVersion!(message.id, versionIndex - 1)}
+              disabled={versionIndex <= 0}
+              title="上一版"
+            >‹</button>
+            <span className="tabular-nums">{versionIndex + 1} / {versionCount}</span>
+            <button
+              type="button"
+              className="inline-flex size-5 items-center justify-center rounded-md hover:bg-accent disabled:opacity-30 disabled:cursor-not-allowed"
+              onClick={() => onSwitchVersion!(message.id, versionIndex + 1)}
+              disabled={versionIndex >= versionCount - 1}
+              title="下一版"
+            >›</button>
+          </div>
+        )}
       </div>
       <div className="flex flex-col items-center gap-0.5 self-end opacity-0 transition-opacity group-hover/msg:opacity-100">
         <CopyButton text={textContent} />
         {!disabled && onEdit && (
           <ActionBtn icon={PencilIcon} title="编辑" onClick={() => { setEditText(textContent); setEditing(true) }} />
         )}
-        {!disabled && isLast && onRetry && (
+        {!disabled && onRetry && (
           <ActionBtn icon={RefreshCwIcon} title="重试" onClick={onRetry} />
         )}
         {!disabled && onDelete && (

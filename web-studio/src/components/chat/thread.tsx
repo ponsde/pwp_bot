@@ -132,6 +132,8 @@ export function Thread({ sessionId }: ThreadProps) {
             onEditUserMessage={chat.editUserMessage}
             onEditAssistantMessage={chat.editAssistantMessage}
             onRetry={chat.retry}
+            onRetryAssistant={chat.retryAssistant}
+            onSwitchVersion={chat.switchVersion}
             isStreaming={isStreaming}
           />
         )}
