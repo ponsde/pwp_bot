@@ -390,8 +390,12 @@ class TableExtractor:
             value = self._select_core_value(row, header, period_key, year)
             if value is None:
                 value = self._select_value_from_candidates(combined_numeric_values, period_key)
-            if value is not None and field not in target:
-                target[field] = self._convert_value(value, self._get_field_meta("core_performance_indicators_sheet", field), source_unit)
+            if value is not None:
+                converted = self._convert_value(
+                    value, self._get_field_meta("core_performance_indicators_sheet", field), source_unit
+                )
+                if _should_overwrite_aggregate(target.get(field), converted):
+                    target[field] = converted
             idx += max(1, consumed_rows + 1)
 
     def _compute_derived_fields(self, records: dict[str, dict[str, Any]]) -> None:
