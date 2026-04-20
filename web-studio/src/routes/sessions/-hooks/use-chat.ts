@@ -291,6 +291,18 @@ export function useChat(options: UseChatOptions): UseChatReturn {
             lastToolCall = { name, arguments: args }
             accToolCalls.push(lastToolCall)
             setStreamingToolCalls([...accToolCalls])
+            // Flush any pending text buffer into the CURRENT text segment
+            // before inserting the tool. Otherwise the typewriter would
+            // drain the buffer into the new text segment created AFTER
+            // the tool, visually reordering "text X → tool" into
+            // "tool → text X".
+            if (contentBuffer) {
+              const seg = getCurrentTextSeg()
+              seg.text += contentBuffer
+              displayContent += contentBuffer
+              contentBuffer = ''
+              setStreamingContent(displayContent)
+            }
             // Record a tool segment in the chronological timeline. The
             // next content_delta will open a fresh text segment after it.
             segments.push({ kind: 'tool', tc: lastToolCall })
