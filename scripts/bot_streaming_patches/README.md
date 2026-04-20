@@ -20,13 +20,16 @@ Idempotent — safe to re-run.
 
 ## What's in here
 
-- `01-pr13-content-deltas.patch` — adds CONTENT_DELTA / REASONING_DELTA
-  events, `stream=True` in LLM providers, SSE routing in openapi channel.
-- `02-pr23-aiter-bytes.patch` — openviking-server proxy preserves SSE
-  framing by forwarding bytes instead of buffered lines.
-- `apply.sh` — patches the installed site-packages, plus a manual fix in
-  `cli/commands.py` to read the OpenAPI api_key from `ov.conf` (0.3.9
-  regressed this, hard-failing the endpoint without a key).
+- `patched_files/` — the 9 already-patched source files (captured against
+  `openviking==0.3.9`). `apply.sh` copies them over the pip-installed
+  versions. Much more reliable than running `patch` (which drifts
+  silently when the unified-diff context doesn't match exactly — bit us
+  on Railway's fresh Docker builds).
+- `01-pr13-content-deltas.patch` / `02-pr23-aiter-bytes.patch` — kept
+  for reference / audit. Not used by `apply.sh` anymore.
+- `apply.sh` — verifies `openviking==0.3.9` is installed, then `cp`s the
+  bundled files over site-packages. Fails loudly if the version drifts
+  or any expected marker is missing after copy.
 
 ## Verifying
 

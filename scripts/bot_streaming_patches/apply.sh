@@ -1,189 +1,92 @@
 #!/usr/bin/env bash
-# Apply streaming patches to the installed openviking/vikingbot packages.
-# PR13 + PR23 from Ferry-200/OpenViking were merged into the new-frontend
-# branch, not main — so PyPI releases (incl. 0.3.9) don't include them.
+# Apply streaming + api_key fixes to the installed openviking/vikingbot packages.
 #
-# We apply them directly to the installed site-packages so the bot gateway
-# emits content_delta / reasoning_delta events (token-level streaming) and
-# the openviking-server proxy preserves SSE event framing.
+# PR13 + PR23 from Ferry-200/OpenViking were merged into the new-frontend branch,
+# not main — so PyPI 0.3.9 doesn't include them. Instead of running `patch`
+# (which silently drops hunks when context drifts and was unreliable on Railway),
+# we ship the already-patched files in ./patched_files/ and copy them over.
 #
-# Idempotent: checks via `patch --dry-run` before applying.
+# This requires openviking==0.3.9 (pinned in requirements.txt). If a different
+# version is installed the script aborts rather than overwriting with files
+# from a different release.
 #
 # Usage:
 #   scripts/bot_streaming_patches/apply.sh
 #
-# Reverse: run each patch with `patch -R -p1`.
+# SITE env var points at the Python site-packages root.
+# Defaults to the project's .venv for local dev.
 
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-# SITE override for Docker / system installs; defaults to the project venv.
 SITE="${SITE:-$ROOT/.venv/lib/python3.12/site-packages}"
-export SITE   # make it visible to the embedded python3 -c blocks below
+PATCHED="$(cd "$(dirname "$0")" && pwd)/patched_files"
 
 if [ ! -d "$SITE/vikingbot" ]; then
     echo "error: $SITE/vikingbot not found. Point SITE= at the Python site-packages root." >&2
     exit 1
 fi
 
-# Extra manual fix to cli/commands.py: read API key from ov.conf (0.3.9 hard-fails without it).
-MANUAL_FIX_MARKER="Read API key from ov.conf bot.channels"
-if ! grep -q "$MANUAL_FIX_MARKER" "$SITE/vikingbot/cli/commands.py"; then
-    python3 - <<'PY'
-import os, pathlib
-p = pathlib.Path(os.environ["SITE"]) / "vikingbot" / "cli" / "commands.py"
-src = p.read_text()
-old = (
-    '        openapi_config = OpenAPIChannelConfig(\n'
-    '            enabled=True,\n'
-    '            port=openapi_port,\n'
-    '            api_key="",\n'
-    '        )\n'
-)
-new = (
-    '        # Read API key from ov.conf bot.channels[] where type == "openapi" or "cli".\n'
-    '        # 0.3.9 hard-fails the chat endpoint without a configured key.\n'
-    '        _openapi_api_key = ""\n'
-    '        try:\n'
-    '            for ch in config.channels_config.get_all_channels():\n'
-    '                ch_type = getattr(ch, "type", None) or (ch.get("type") if isinstance(ch, dict) else None)\n'
-    '                if ch_type in ("openapi", "cli"):\n'
-    '                    _openapi_api_key = (\n'
-    '                        getattr(ch, "api_key", "") or (ch.get("api_key") if isinstance(ch, dict) else "")\n'
-    '                    )\n'
-    '                    if _openapi_api_key:\n'
-    '                        break\n'
-    '        except Exception as _exc:  # noqa: BLE001\n'
-    '            logger.warning(f"could not resolve OpenAPI api_key from config: {_exc}")\n'
-    '        openapi_config = OpenAPIChannelConfig(\n'
-    '            enabled=True,\n'
-    '            port=openapi_port,\n'
-    '            api_key=_openapi_api_key,\n'
-    '        )\n'
-)
-if old in src:
-    p.write_text(src.replace(old, new))
-    print(f"[manual-fix] patched {p.name}")
-else:
-    print(f"[manual-fix] already patched or unexpected layout in {p.name}")
-PY
+if [ ! -d "$PATCHED" ]; then
+    echo "error: $PATCHED not found." >&2
+    exit 1
 fi
 
-apply_patch () {
-    local patch_file
-    # Absolutize so the subshell's `cd "$SITE"` doesn't lose the path.
-    patch_file="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
-    local strip="$2"
-    echo "applying $(basename "$patch_file")..."
-    if (cd "$SITE" && patch -p"$strip" --dry-run -f < "$patch_file" > /dev/null 2>&1); then
-        (cd "$SITE" && patch -p"$strip" < "$patch_file")
-    elif (cd "$SITE" && patch -p"$strip" -R --dry-run -f < "$patch_file" > /dev/null 2>&1); then
-        echo "  (already applied — skipping)"
-    else
-        echo "  warning: hunks may not match exactly; attempting forward apply..."
-        (cd "$SITE" && patch -p"$strip" -f < "$patch_file" || true)
+# Verify installed openviking version matches what the patched files were
+# captured against. We embed this so wheel drift surfaces as a loud error
+# instead of a silent runtime crash.
+EXPECTED_VERSION="0.3.9"
+ACTUAL_VERSION="$(python3 -c 'import openviking, sys; sys.stdout.write(getattr(openviking, "__version__", "unknown"))' 2>/dev/null || echo unknown)"
+if [ "$ACTUAL_VERSION" != "$EXPECTED_VERSION" ]; then
+    # Fall back to pip metadata if the package doesn't expose __version__.
+    ACTUAL_VERSION="$(python3 -c 'from importlib.metadata import version; print(version("openviking"))' 2>/dev/null || echo unknown)"
+fi
+if [ "$ACTUAL_VERSION" != "$EXPECTED_VERSION" ]; then
+    echo "error: installed openviking version is $ACTUAL_VERSION but patched_files were captured against $EXPECTED_VERSION." >&2
+    echo "       pin openviking==$EXPECTED_VERSION in requirements.txt or refresh patched_files." >&2
+    exit 1
+fi
+
+copy_file () {
+    local rel="$1"
+    local src="$PATCHED/$rel"
+    local dst="$SITE/$rel"
+    if [ ! -f "$src" ]; then
+        echo "error: missing patched source $src" >&2
+        exit 1
     fi
+    if [ ! -f "$dst" ]; then
+        echo "error: target $dst does not exist in the installed package" >&2
+        exit 1
+    fi
+    cp "$src" "$dst"
+    echo "  patched $rel"
 }
 
-# PR13 diff has bot/vikingbot paths; strip that prefix on the fly.
-PR13="$(dirname "$0")/01-pr13-content-deltas.patch"
-PR13_REWROTE="$(mktemp)"
-sed 's|a/bot/vikingbot|a/vikingbot|g; s|b/bot/vikingbot|b/vikingbot|g' "$PR13" > "$PR13_REWROTE"
-apply_patch "$PR13_REWROTE" 1
-rm -f "$PR13_REWROTE"
+echo "applying bundled patches to $SITE ..."
+copy_file "vikingbot/agent/loop.py"
+copy_file "vikingbot/bus/events.py"
+copy_file "vikingbot/channels/openapi.py"
+copy_file "vikingbot/channels/openapi_models.py"
+copy_file "vikingbot/cli/commands.py"
+copy_file "vikingbot/providers/base.py"
+copy_file "vikingbot/providers/litellm_provider.py"
+copy_file "vikingbot/providers/openai_compatible_provider.py"
+copy_file "openviking/server/routers/bot.py"
 
-PR23="$(dirname "$0")/02-pr23-aiter-bytes.patch"
-apply_patch "$PR23" 1
-
-# Verify PR13's provider-signature hunks actually landed. `patch -f || true`
-# above will silently accept broken output; check explicitly so Railway builds
-# fail loudly instead of producing a runtime TypeError.
-PROVIDER_OK=1
-for f in \
-    "$SITE/vikingbot/providers/litellm_provider.py" \
-    "$SITE/vikingbot/providers/openai_compatible_provider.py"; do
-    if ! grep -q "on_content_delta: DeltaCallback" "$f"; then
-        echo "  !! $f missing on_content_delta in signature"
-        PROVIDER_OK=0
+# Sanity: the key streaming markers must be present after copy.
+for needle_file in \
+    "on_content_delta: DeltaCallback|$SITE/vikingbot/providers/litellm_provider.py" \
+    "on_content_delta: DeltaCallback|$SITE/vikingbot/providers/openai_compatible_provider.py" \
+    "on_content_delta=on_content_delta|$SITE/vikingbot/agent/loop.py" \
+    "Read API key from ov.conf bot.channels|$SITE/vikingbot/cli/commands.py"; do
+    needle="${needle_file%%|*}"
+    file="${needle_file##*|}"
+    if ! grep -q "$needle" "$file"; then
+        echo "error: expected marker \"$needle\" missing from $file after copy" >&2
+        exit 1
     fi
 done
 
-# Finally: loop.py hunk1 from PR13 fails (version drift on get_definitions signature).
-# Apply the behavior manually: inject on_content_delta / on_reasoning_delta hooks
-# around the provider.chat call.
-#
-# If PROVIDER_OK=0, skip the kwargs — calling chat() with unknown kwargs would
-# raise TypeError at runtime. The bot still runs, just without token streaming.
-LOOP="$SITE/vikingbot/agent/loop.py"
-if ! grep -q "on_content_delta=on_content_delta" "$LOOP" \
-   && [ "$PROVIDER_OK" = "1" ]; then
-    python3 - <<'PY'
-import os, pathlib
-p = pathlib.Path(os.environ["SITE"]) / "vikingbot" / "agent" / "loop.py"
-src = p.read_text()
-old = (
-    '            response = await self.provider.chat(\n'
-    '                messages=messages,\n'
-    '                tools=self.tools.get_definitions(ov_tools_enable=ov_tools_enable),\n'
-    '                model=self.model,\n'
-    '                session_id=session_key.safe_name(),\n'
-    '            )\n'
-)
-new = (
-    '            on_content_delta = None\n'
-    '            on_reasoning_delta = None\n'
-    '            if publish_events:\n\n'
-    '                async def on_content_delta(piece: str) -> None:\n'
-    '                    await self.bus.publish_outbound(\n'
-    '                        OutboundMessage(\n'
-    '                            session_key=session_key,\n'
-    '                            content=piece,\n'
-    '                            event_type=OutboundEventType.CONTENT_DELTA,\n'
-    '                        )\n'
-    '                    )\n\n'
-    '                async def on_reasoning_delta(piece: str) -> None:\n'
-    '                    await self.bus.publish_outbound(\n'
-    '                        OutboundMessage(\n'
-    '                            session_key=session_key,\n'
-    '                            content=piece,\n'
-    '                            event_type=OutboundEventType.REASONING_DELTA,\n'
-    '                        )\n'
-    '                    )\n\n'
-    '            response = await self.provider.chat(\n'
-    '                messages=messages,\n'
-    '                tools=self.tools.get_definitions(ov_tools_enable=ov_tools_enable),\n'
-    '                model=self.model,\n'
-    '                session_id=session_key.safe_name(),\n'
-    '                on_content_delta=on_content_delta,\n'
-    '                on_reasoning_delta=on_reasoning_delta,\n'
-    '            )\n'
-)
-if old in src:
-    p.write_text(src.replace(old, new))
-    print(f"[loop.py manual-fix] patched")
-else:
-    print(f"[loop.py manual-fix] already patched or layout drifted")
-PY
-elif [ "$PROVIDER_OK" = "0" ]; then
-    # Provider patch didn't stick — strip kwargs from loop.py if a previous
-    # run injected them, so the bot runs (without token streaming).
-    if grep -q "on_content_delta=on_content_delta" "$LOOP"; then
-        echo "  provider patch missing — stripping loop.py kwargs to avoid TypeError"
-        python3 - <<'PY'
-import os, pathlib, re
-p = pathlib.Path(os.environ["SITE"]) / "vikingbot" / "agent" / "loop.py"
-src = p.read_text()
-src = re.sub(r'\n\s*on_content_delta=on_content_delta,', '', src)
-src = re.sub(r'\n\s*on_reasoning_delta=on_reasoning_delta,', '', src)
-p.write_text(src)
-PY
-    fi
-fi
-
 echo ""
-if [ "$PROVIDER_OK" = "1" ]; then
-    echo "done. restart the bot gateway for changes to take effect."
-else
-    echo "WARNING: provider patch did not apply; token-level streaming disabled."
-    echo "         bot will still work via non-streaming path."
-fi
+echo "done. restart the bot gateway for changes to take effect."
