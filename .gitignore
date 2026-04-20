@@ -20,9 +20,14 @@ ov.conf
 .worktrees/
 .claude/
 
-# ── Local-only notes ──────────────────────────────────────────
+# ── Local-only notes / dev workflow / drafts ──────────────────
 CLAUDE.md
 PLAN.md
+AI-CONTEXT.md
+openspec/
+docs/
+paper/
+vikingbot_pkg/
 
 # ── Data (large; grader can regenerate via pipeline/index scripts) ──
 # Default: ignore everything under data/, then unignore:
