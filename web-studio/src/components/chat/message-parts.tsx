@@ -275,9 +275,11 @@ function pickStr(obj: Record<string, unknown>, keys: string[]): string | undefin
 function ReferencesList({ refs }: { refs: Ref[] }) {
   return (
     <ul className="space-y-1.5">
-      {refs.slice(0, 12).map((r, i) => {
-        const href = paperHref(r.paper_path)
-        const inner = (
+      {refs.slice(0, 12).map((r, i) => (
+        <li
+          key={i}
+          className="rounded-md border border-border/40 bg-background/60 px-2.5 py-1.5"
+        >
           <div className="flex items-start gap-2">
             <span className="mt-0.5 inline-flex size-4 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[10px] font-semibold text-primary">
               {i + 1}
@@ -293,32 +295,8 @@ function ReferencesList({ refs }: { refs: Ref[] }) {
               )}
             </div>
           </div>
-        )
-        return (
-          <li key={i} className="rounded-md border border-border/40 bg-background/60">
-            {href ? (
-              <a
-                href={href}
-                target="_blank"
-                rel="noopener noreferrer"
-                // Capture phase beats TanStack Router's bubble-phase listener.
-                onClickCapture={(e) => {
-                  e.stopPropagation()
-                  // Let the browser handle the navigation natively; don't
-                  // preventDefault. target="_blank" + rel="noopener" opens
-                  // the PDF in a new tab which is what you want for a
-                  // reference anyway.
-                }}
-                className="block w-full px-2.5 py-1.5 text-left transition-colors hover:bg-muted/50 cursor-pointer"
-              >
-                {inner}
-              </a>
-            ) : (
-              <div className="px-2.5 py-1.5">{inner}</div>
-            )}
-          </li>
-        )
-      })}
+        </li>
+      ))}
       {refs.length > 12 && (
         <li className="pl-6 text-[11px] text-muted-foreground/70">
           …还有 {refs.length - 12} 条
@@ -326,20 +304,6 @@ function ReferencesList({ refs }: { refs: Ref[] }) {
       )}
     </ul>
   )
-}
-
-/**
- * Build a same-origin URL for a paper_path like "./附件5：研报数据/.../x.pdf".
- * Returns null when the ref has no resolvable path (e.g. viking:// internal
- * URI or a plain string source).
- */
-function paperHref(p?: string): string | null {
-  if (!p) return null
-  const trimmed = p.trim()
-  if (!trimmed || trimmed.startsWith('viking://')) return null
-  // Strip leading ./ and encode each segment so Chinese chars work in href.
-  const rel = trimmed.replace(/^\.\//, '')
-  return '/papers/' + rel.split('/').map(encodeURIComponent).join('/')
 }
 
 function shortPath(p?: string): string | undefined {

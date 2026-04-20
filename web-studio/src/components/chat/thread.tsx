@@ -123,6 +123,7 @@ export function Thread({ sessionId }: ThreadProps) {
                     content: chat.streamingContent,
                     toolCalls: chat.streamingToolCalls,
                     reasoning: chat.streamingReasoning,
+                    segments: chat.streamingSegments,
                     iteration: chat.iteration,
                   }
                 : undefined

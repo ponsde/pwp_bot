@@ -26,38 +26,49 @@ function createUserMessage(content: string): Message {
   }
 }
 
-function buildAssistantMessage(
-  content: string,
-  toolCalls: StreamToolCall[],
-): Message {
+/**
+ * Stream segment: a single text run or a tool call in the order it
+ * happened, so the UI can preserve the chronological interleave of
+ * "text → tool → more text → another tool → …" rather than dumping all
+ * tool calls above all text.
+ */
+export type StreamSegment =
+  | { kind: 'text'; text: string }
+  | { kind: 'tool'; tc: StreamToolCall }
+
+
+function segmentsToParts(segments: StreamSegment[]): MessagePart[] {
   const parts: MessagePart[] = []
-
-  for (const tc of toolCalls) {
-    const toolPart: ToolPart = {
-      type: 'tool',
-      tool_id: '',
-      tool_name: tc.name,
-      tool_uri: '',
-      skill_uri: '',
-      tool_status: 'completed',
-      tool_output: tc.result,
+  for (const seg of segments) {
+    if (seg.kind === 'text') {
+      if (seg.text) parts.push({ type: 'text', text: seg.text } satisfies TextPart)
+    } else {
+      const toolPart: ToolPart = {
+        type: 'tool',
+        tool_id: '',
+        tool_name: seg.tc.name,
+        tool_uri: '',
+        skill_uri: '',
+        tool_status: 'completed',
+        tool_output: seg.tc.result,
+      }
+      try {
+        toolPart.tool_input = JSON.parse(seg.tc.arguments)
+      } catch {
+        toolPart.tool_input = { raw: seg.tc.arguments }
+      }
+      parts.push(toolPart)
     }
-    try {
-      toolPart.tool_input = JSON.parse(tc.arguments)
-    } catch {
-      toolPart.tool_input = { raw: tc.arguments }
-    }
-    parts.push(toolPart)
   }
+  return parts
+}
 
-  if (content) {
-    parts.push({ type: 'text', text: content } satisfies TextPart)
-  }
 
+function buildAssistantMessage(segments: StreamSegment[]): Message {
   return {
     id: generateId(),
     role: 'assistant',
-    parts,
+    parts: segmentsToParts(segments),
     created_at: new Date().toISOString(),
   }
 }
@@ -75,6 +86,7 @@ export interface UseChatReturn {
   streamingContent: string
   streamingToolCalls: StreamToolCall[]
   streamingReasoning: string
+  streamingSegments: StreamSegment[]
   iteration: number
   send: (message: string) => Promise<void>
   abort: () => void
@@ -92,6 +104,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
   const [streamingContent, setStreamingContent] = useState('')
   const [streamingToolCalls, setStreamingToolCalls] = useState<StreamToolCall[]>([])
   const [streamingReasoning, setStreamingReasoning] = useState('')
+  const [streamingSegments, setStreamingSegments] = useState<StreamSegment[]>([])
   const [iteration, setIteration] = useState(0)
 
   const abortRef = useRef<AbortController | null>(null)
@@ -107,6 +120,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     setStreamingContent('')
     setStreamingToolCalls([])
     setStreamingReasoning('')
+    setStreamingSegments([])
     setIteration(0)
   }, [sessionId])
 
@@ -129,6 +143,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     setStreamingContent('')
     setStreamingToolCalls([])
     setStreamingReasoning('')
+    setStreamingSegments([])
     setIteration(0)
   }, [abort, initialMessages])
 
@@ -144,6 +159,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     setStreamingContent('')
     setStreamingToolCalls([])
     setStreamingReasoning('')
+    setStreamingSegments([])
     setIteration(0)
 
     const controller = new AbortController()
@@ -153,6 +169,20 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     let accReasoning = ''
     const accToolCalls: StreamToolCall[] = []
     let lastToolCall: StreamToolCall | null = null
+
+    // Chronological segments for interleaved text / tool rendering. Starts
+    // with a single empty text bucket; content_delta appends to the last
+    // text bucket; tool_call pushes a tool segment then a new text bucket
+    // for any subsequent content.
+    const segments: StreamSegment[] = [{ kind: 'text', text: '' }]
+    const getCurrentTextSeg = (): { kind: 'text'; text: string } => {
+      const last = segments[segments.length - 1]
+      if (last?.kind === 'text') return last
+      const fresh: { kind: 'text'; text: string } = { kind: 'text', text: '' }
+      segments.push(fresh)
+      return fresh
+    }
+    const flushSegments = () => setStreamingSegments([...segments])
 
     // ── Typewriter throttle ────────────────────────────────────────────
     // The bot emits content_delta chunks in bursts (~100–200 ms apart,
@@ -169,27 +199,32 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     const CATCH_UP_THRESHOLD = 80
     const typerId = window.setInterval(() => {
       let changed = false
-      for (const state of [
-        { label: 'content' as const },
-        { label: 'reasoning' as const },
-      ]) {
-        const buf = state.label === 'content' ? contentBuffer : reasoningBuffer
-        if (!buf) continue
-        // Take 1 char by default; up to 8 when buffer is long; flush all on end.
+      // Content drains into the current text segment — NOT a separate
+      // displayContent string — so the rendered order reflects what
+      // actually happened.
+      if (contentBuffer) {
         let take = 1
-        if (streamEnded) take = buf.length
-        else if (buf.length > CATCH_UP_THRESHOLD) take = 8
-        else if (buf.length > 30) take = 3
-        const slice = buf.slice(0, take)
-        if (state.label === 'content') {
-          displayContent += slice
-          contentBuffer = buf.slice(take)
-          setStreamingContent(displayContent)
-        } else {
-          displayReasoning += slice
-          reasoningBuffer = buf.slice(take)
-          setStreamingReasoning(displayReasoning)
-        }
+        if (streamEnded) take = contentBuffer.length
+        else if (contentBuffer.length > CATCH_UP_THRESHOLD) take = 8
+        else if (contentBuffer.length > 30) take = 3
+        const slice = contentBuffer.slice(0, take)
+        contentBuffer = contentBuffer.slice(take)
+        displayContent += slice
+        const seg = getCurrentTextSeg()
+        seg.text += slice
+        flushSegments()
+        setStreamingContent(displayContent)
+        changed = true
+      }
+      if (reasoningBuffer) {
+        let take = 1
+        if (streamEnded) take = reasoningBuffer.length
+        else if (reasoningBuffer.length > CATCH_UP_THRESHOLD) take = 8
+        else if (reasoningBuffer.length > 30) take = 3
+        const slice = reasoningBuffer.slice(0, take)
+        reasoningBuffer = reasoningBuffer.slice(take)
+        displayReasoning += slice
+        setStreamingReasoning(displayReasoning)
         changed = true
       }
       if (streamEnded && !changed) {
@@ -238,12 +273,20 @@ export function useChat(options: UseChatOptions): UseChatReturn {
             lastToolCall = { name, arguments: args }
             accToolCalls.push(lastToolCall)
             setStreamingToolCalls([...accToolCalls])
+            // Record a tool segment in the chronological timeline. The
+            // next content_delta will open a fresh text segment after it.
+            segments.push({ kind: 'tool', tc: lastToolCall })
+            segments.push({ kind: 'text', text: '' })
+            flushSegments()
             break
           }
           case 'tool_result': {
             if (lastToolCall) {
               lastToolCall.result = String(event.data)
               setStreamingToolCalls([...accToolCalls])
+              // Tool segment holds a reference to the same StreamToolCall
+              // object, so we only need to poke re-render.
+              flushSegments()
             }
             break
           }
@@ -269,12 +312,13 @@ export function useChat(options: UseChatOptions): UseChatReturn {
       // would un-render the typing animation mid-word.
       streamEnded = true
 
-      const assistantMsg = buildAssistantMessage(accContent, accToolCalls)
+      const assistantMsg = buildAssistantMessage(segments)
       setMessages((prev) => [...prev, assistantMsg])
       setStatus('idle')
       setStreamingContent('')
       setStreamingToolCalls([])
       setStreamingReasoning('')
+      setStreamingSegments([])
 
       // Persist to our SQLite store + refresh sidebar
       if (persistMessages) {
@@ -288,8 +332,8 @@ export function useChat(options: UseChatOptions): UseChatReturn {
       streamEnded = true
       window.clearInterval(typerId)
       if (controller.signal.aborted) {
-        if (accContent) {
-          const partialMsg = buildAssistantMessage(accContent, accToolCalls)
+        if (accContent || segments.some((s) => s.kind === 'tool')) {
+          const partialMsg = buildAssistantMessage(segments)
           setMessages((prev) => [...prev, partialMsg])
         }
         setStatus('idle')
@@ -371,6 +415,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     streamingContent,
     streamingToolCalls,
     streamingReasoning,
+    streamingSegments,
     iteration,
     send,
     abort,

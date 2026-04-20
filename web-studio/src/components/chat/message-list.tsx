@@ -3,6 +3,7 @@ import { CheckIcon, CopyIcon, FileIcon, ImageIcon, PencilIcon, RefreshCwIcon, Tr
 
 import type { Message } from '#/routes/sessions/-types/message'
 import type { StreamToolCall } from '#/routes/sessions/-types/chat'
+import type { StreamSegment } from '#/routes/sessions/-hooks/use-chat'
 import { MarkdownContent, ReasoningBlock, ToolCallBlock } from './message-parts'
 
 // ---------------------------------------------------------------------------
@@ -145,6 +146,7 @@ interface MessageListProps {
     content: string
     toolCalls: StreamToolCall[]
     reasoning: string
+    segments: StreamSegment[]
     iteration: number
   }
   onDeleteMessage?: (id: string) => void
@@ -360,11 +362,13 @@ function StreamingAssistantMessage({
   content,
   toolCalls,
   reasoning,
+  segments,
   iteration,
 }: {
   content: string
   toolCalls: StreamToolCall[]
   reasoning: string
+  segments: StreamSegment[]
   iteration: number
 }) {
   const hasContent = content || toolCalls.length > 0 || reasoning
@@ -383,29 +387,31 @@ function StreamingAssistantMessage({
 
         <ReasoningBlock reasoning={reasoning} isRunning />
 
-        {toolCalls.map((tc, i) => {
+        {/* Render segments in the chronological order they arrived,
+            so "text → tool → more text" reads naturally. */}
+        {segments.map((seg, i) => {
+          if (seg.kind === 'text') {
+            if (!seg.text) return null
+            return <MarkdownContent key={`seg-${i}`} content={seg.text} isStreaming />
+          }
           let args: Record<string, unknown> = {}
           try {
-            args = JSON.parse(tc.arguments) as Record<string, unknown>
+            args = JSON.parse(seg.tc.arguments) as Record<string, unknown>
           } catch {
-            if (tc.arguments) args = { raw: tc.arguments }
+            if (seg.tc.arguments) args = { raw: seg.tc.arguments }
           }
           return (
             <ToolCallBlock
-              key={i}
-              toolName={tc.name}
+              key={`seg-${i}`}
+              toolName={seg.tc.name}
               args={args}
-              result={tc.result}
-              isRunning={!tc.result}
+              result={seg.tc.result}
+              isRunning={!seg.tc.result}
             />
           )
         })}
 
-        {content ? (
-          <MarkdownContent content={content} isStreaming />
-        ) : !hasContent ? (
-          <TypingIndicator />
-        ) : null}
+        {!hasContent && <TypingIndicator />}
       </div>
     </div>
   )
