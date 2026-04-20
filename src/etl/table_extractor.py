@@ -203,6 +203,41 @@ UNIT_RE = re.compile(r"单位[：:]\s*(?:人民币)?(元|万元|千元|百万元
 NUMERIC_RE = re.compile(r"-?\d+(?:,\d{3})*(?:\.\d+)?%?")
 
 
+# ── Magnitude-guarded overwrite for aggregate fields ─────────────────────────
+# Any listed company's major aggregate (总资产/总收入/净利润/现金流) in any period
+# should be >> 100 万元. Values below this floor are treated as garbage from
+# misclassified auxiliary tables (cashflow supplementary, quarterly splits, etc.).
+_AGGREGATE_MAGNITUDE_FLOOR = 100.0
+_AGGREGATE_RATIO_MIN = 0.3
+_AGGREGATE_RATIO_MAX = 3.0
+
+
+def _should_overwrite_aggregate(existing: float | None, new: float | None) -> bool:
+    """Decide whether `new` should replace `existing` for an aggregate field.
+
+    Rules (first match wins):
+      1. existing is None → write.
+      2. new is None      → keep existing (never downgrade).
+      3. existing < floor and new >= floor → write (escape garbage).
+      4. existing >= floor and new < floor → keep existing (reject garbage).
+      5. existing == 0: write iff new != 0.
+      6. |new/existing| in [0.3, 3.0] → write; otherwise keep existing.
+    """
+    if existing is None:
+        return True
+    if new is None:
+        return False
+    abs_e, abs_n = abs(existing), abs(new)
+    if abs_e < _AGGREGATE_MAGNITUDE_FLOOR and abs_n >= _AGGREGATE_MAGNITUDE_FLOOR:
+        return True
+    if abs_e >= _AGGREGATE_MAGNITUDE_FLOOR and abs_n < _AGGREGATE_MAGNITUDE_FLOOR:
+        return False
+    if existing == 0:
+        return new != 0
+    ratio = abs_n / abs_e
+    return _AGGREGATE_RATIO_MIN <= ratio <= _AGGREGATE_RATIO_MAX
+
+
 class TableExtractor:
     def __init__(self) -> None:
         self.schema = load_schema_metadata()
