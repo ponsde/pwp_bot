@@ -1004,6 +1004,15 @@ def create_app() -> FastAPI:
     CHART_DIR.mkdir(parents=True, exist_ok=True)
     app.mount("/charts", StaticFiles(directory=str(CHART_DIR)), name="charts")
 
+    # Serve research PDFs under /papers so the chat UI can link references
+    # directly to the source file. paper_path values in xlsx are stored as
+    # "./附件5：研报数据/..." per submission spec, and the actual bytes live
+    # under data/sample/示例数据/. Mount the parent so the relative path
+    # "附件5：研报数据/xxx.pdf" resolves.
+    PAPERS_DIR = ROOT_DIR / "data" / "sample" / "示例数据"
+    if PAPERS_DIR.is_dir():
+        app.mount("/papers", StaticFiles(directory=str(PAPERS_DIR)), name="papers")
+
     # ------------------------------------------------------------------
     # Reverse proxy: /bot/v1/* → vikingbot gateway (like OV server does)
     # ------------------------------------------------------------------

@@ -154,6 +154,49 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     const accToolCalls: StreamToolCall[] = []
     let lastToolCall: StreamToolCall | null = null
 
+    // ── Typewriter throttle ────────────────────────────────────────────
+    // The bot emits content_delta chunks in bursts (~100–200 ms apart,
+    // each ~20 chars). That reads as "text appearing in clumps" even
+    // though it IS streaming. Buffer all incoming chars and drain at a
+    // steady ~45 chars/s (~22 ms/char) for a typewriter feel. When the
+    // buffer grows past 80 chars we speed up so we never fall far behind.
+    let displayContent = ''
+    let contentBuffer = ''
+    let displayReasoning = ''
+    let reasoningBuffer = ''
+    let streamEnded = false
+    const TICK_MS = 22
+    const CATCH_UP_THRESHOLD = 80
+    const typerId = window.setInterval(() => {
+      let changed = false
+      for (const state of [
+        { label: 'content' as const },
+        { label: 'reasoning' as const },
+      ]) {
+        const buf = state.label === 'content' ? contentBuffer : reasoningBuffer
+        if (!buf) continue
+        // Take 1 char by default; up to 8 when buffer is long; flush all on end.
+        let take = 1
+        if (streamEnded) take = buf.length
+        else if (buf.length > CATCH_UP_THRESHOLD) take = 8
+        else if (buf.length > 30) take = 3
+        const slice = buf.slice(0, take)
+        if (state.label === 'content') {
+          displayContent += slice
+          contentBuffer = buf.slice(take)
+          setStreamingContent(displayContent)
+        } else {
+          displayReasoning += slice
+          reasoningBuffer = buf.slice(take)
+          setStreamingReasoning(displayReasoning)
+        }
+        changed = true
+      }
+      if (streamEnded && !changed) {
+        window.clearInterval(typerId)
+      }
+    }, TICK_MS)
+
     try {
       const response = await sendChatStream(
         { message, session_id: sessionId },
@@ -172,12 +215,12 @@ export function useChat(options: UseChatOptions): UseChatReturn {
           }
           case 'content_delta': {
             accContent += String(event.data)
-            setStreamingContent(accContent)
+            contentBuffer += String(event.data)
             break
           }
           case 'reasoning_delta': {
             accReasoning += String(event.data)
-            setStreamingReasoning(accReasoning)
+            reasoningBuffer += String(event.data)
             break
           }
           case 'reasoning': {
@@ -205,12 +248,26 @@ export function useChat(options: UseChatOptions): UseChatReturn {
             break
           }
           case 'response': {
-            accContent = String(event.data)
-            setStreamingContent(accContent)
+            // If no deltas streamed (old bot), push the whole response into
+            // the typewriter buffer so it still plays out visibly.
+            const full = String(event.data)
+            if (!accContent) {
+              accContent = full
+              contentBuffer += full
+            } else if (full.length > accContent.length) {
+              // Deltas landed short of the final text — append the tail.
+              contentBuffer += full.slice(accContent.length)
+              accContent = full
+            }
             break
           }
         }
       }
+
+      // Stream done; let the typewriter drain any remaining buffer, then
+      // commit. We do NOT clear streamingContent immediately because that
+      // would un-render the typing animation mid-word.
+      streamEnded = true
 
       const assistantMsg = buildAssistantMessage(accContent, accToolCalls)
       setMessages((prev) => [...prev, assistantMsg])
@@ -228,6 +285,8 @@ export function useChat(options: UseChatOptions): UseChatReturn {
         }).catch(() => {})
       }
     } catch (err) {
+      streamEnded = true
+      window.clearInterval(typerId)
       if (controller.signal.aborted) {
         if (accContent) {
           const partialMsg = buildAssistantMessage(accContent, accToolCalls)
