@@ -59,3 +59,31 @@ def test_negative_values_by_magnitude():
     assert owr(-1000.0, -1500.0) is True       # 1.5x, within range
     assert owr(-1000.0, 10.0) is False          # new is garbage (< floor)
     assert owr(-10.0, -1500.0) is True          # existing is garbage, new escapes
+
+
+# ── Asymmetric rule for consolidated-only fields ──────────────────────────────
+
+def test_consolidated_field_rejects_shrinking_write():
+    # 重药控股 2025HY pattern: liab existing 277,789 (合并 OK) → new 90,906 (母公司)
+    # Without field hint: ratio 0.33 passes [0.3, 3.0] — BAD
+    # With field='liability_total_liabilities': asymmetric [1.0, 3.0] rejects
+    assert owr(277_789.0, 90_906.0) is True       # default rule allows
+    assert owr(277_789.0, 90_906.0, field="liability_total_liabilities") is False
+
+
+def test_consolidated_field_accepts_equal_or_larger():
+    # 合并 on top of 母公司: 母公司 100 → 合并 200 (2x), should overwrite
+    assert owr(100_000.0, 200_000.0, field="asset_total_assets") is True
+    # exactly equal also accepted
+    assert owr(100_000.0, 100_000.0, field="asset_total_assets") is True
+
+
+def test_consolidated_field_still_escapes_garbage_floor():
+    # existing is garbage regardless of field kind
+    assert owr(19.46, 1_643_027.0, field="asset_total_assets") is True
+
+
+def test_net_profit_stays_symmetric():
+    # net_profit is NOT in consolidated-only set (can legitimately be smaller when
+    # 归属于母公司 is preferred over 合并净利润)
+    assert owr(10_000.0, 5_000.0, field="net_profit") is True  # 0.5x within [0.3, 3.0]

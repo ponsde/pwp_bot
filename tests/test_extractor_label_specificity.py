@@ -77,8 +77,8 @@ def test_generic_label_is_overwritten_by_specific_label():
     assert target.get("net_profit") == 1100.0, "specific-label write must overwrite generic-label write"
 
 
-def test_equal_length_labels_allowed_to_overwrite():
-    # "资产总计" (4) vs "资产合计" (4) — both equal length, later wins (subject to magnitude guard)
+def test_consolidated_overwrites_parent_for_balance_assets():
+    # 母公司 first (smaller), 合并 second (larger) → 合并 wins
     extractor = TableExtractor()
     target: dict = {
         "serial_number": 1,
@@ -89,29 +89,71 @@ def test_equal_length_labels_allowed_to_overwrite():
     }
     label_specificity: dict[str, int] = {}
 
-    t1 = ParsedTable(
+    parent = ParsedTable(
         page_number=1,
         raw_rows=[
             ["项目", "期末余额", "期初余额"],
-            ["资产总计", "1000000", "900000"],
+            ["资产总计", "900000", "800000"],
         ],
-        text="合并资产负债表\n项目 期末余额 期初余额",
-        title="合并资产负债表",
+        text="母公司资产负债表\n项目 期末余额 期初余额",
+        title="母公司资产负债表",
         table_type="balance_sheet",
     )
-    extractor._extract_statement_table(t1, "balance_sheet", target, "万元", [], label_specificity)
-    assert target.get("asset_total_assets") == 1000000.0
+    extractor._extract_statement_table(parent, "balance_sheet", target, "万元", [], label_specificity)
+    assert target.get("asset_total_assets") == 900000.0
 
-    # same-length alias with value within magnitude guard → should overwrite
-    t2 = ParsedTable(
+    # 合并 (larger) should overwrite
+    consolidated = ParsedTable(
         page_number=2,
         raw_rows=[
             ["项目", "期末余额", "期初余额"],
-            ["资产合计", "900000", "800000"],
+            ["资产合计", "1000000", "900000"],
         ],
         text="合并资产负债表\n项目 期末余额 期初余额",
         title="合并资产负债表",
         table_type="balance_sheet",
     )
-    extractor._extract_statement_table(t2, "balance_sheet", target, "万元", [], label_specificity)
-    assert target.get("asset_total_assets") == 900000.0
+    extractor._extract_statement_table(consolidated, "balance_sheet", target, "万元", [], label_specificity)
+    assert target.get("asset_total_assets") == 1000000.0
+
+
+def test_parent_cannot_overwrite_consolidated_for_balance():
+    # 合并 first (correct, larger), 母公司 second (smaller) → 母公司 rejected
+    # This directly covers the 重药控股 2025HY regression where 母公司 value
+    # 90,906 was clobbering the correct 合并 value 277,789.
+    extractor = TableExtractor()
+    target: dict = {
+        "serial_number": 1,
+        "stock_code": "000000",
+        "stock_abbr": "测试",
+        "report_period": "2023FY",
+        "report_year": 2023,
+    }
+    label_specificity: dict[str, int] = {}
+
+    consolidated = ParsedTable(
+        page_number=1,
+        raw_rows=[
+            ["项目", "期末余额", "期初余额"],
+            ["负债合计", "277789", "250000"],
+        ],
+        text="合并资产负债表\n项目 期末余额 期初余额",
+        title="合并资产负债表",
+        table_type="balance_sheet",
+    )
+    extractor._extract_statement_table(consolidated, "balance_sheet", target, "万元", [], label_specificity)
+    assert target.get("liability_total_liabilities") == 277789.0
+
+    # 母公司 负债合计 (smaller) must NOT overwrite
+    parent = ParsedTable(
+        page_number=2,
+        raw_rows=[
+            ["项目", "期末余额", "期初余额"],
+            ["负债合计", "90906", "80000"],
+        ],
+        text="母公司资产负债表\n项目 期末余额 期初余额",
+        title="母公司资产负债表",
+        table_type="balance_sheet",
+    )
+    extractor._extract_statement_table(parent, "balance_sheet", target, "万元", [], label_specificity)
+    assert target.get("liability_total_liabilities") == 277789.0, "smaller 母公司 value must not clobber larger 合并 value"

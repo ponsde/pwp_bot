@@ -210,9 +210,24 @@ NUMERIC_RE = re.compile(r"-?\d+(?:,\d{3})*(?:\.\d+)?%?")
 _AGGREGATE_MAGNITUDE_FLOOR = 100.0
 _AGGREGATE_RATIO_MIN = 0.3
 _AGGREGATE_RATIO_MAX = 3.0
+# For balance-sheet aggregates (资产/负债/权益 总计), 合并 >= 母公司 always — so any
+# subsequent write with a *smaller* magnitude is almost certainly a 母公司 value
+# trying to clobber the legitimate 合并 one. Use an asymmetric rule to reject it.
+_CONSOLIDATED_ONLY_FIELDS = frozenset({
+    "asset_total_assets",
+    "liability_total_liabilities",
+    "equity_total_equity",
+    "total_operating_revenue",
+    "net_cash_flow",
+    "operating_cf_net_amount",
+})
 
 
-def _should_overwrite_aggregate(existing: float | None, new: float | None) -> bool:
+def _should_overwrite_aggregate(
+    existing: float | None,
+    new: float | None,
+    field: str | None = None,
+) -> bool:
     """Decide whether `new` should replace `existing` for an aggregate field.
 
     Rules (first match wins):
@@ -221,7 +236,11 @@ def _should_overwrite_aggregate(existing: float | None, new: float | None) -> bo
       3. existing < floor and new >= floor → write (escape garbage).
       4. existing >= floor and new < floor → keep existing (reject garbage).
       5. existing == 0: write iff new != 0.
-      6. |new/existing| in [0.3, 3.0] → write; otherwise keep existing.
+      6. Ratio-bounded overwrite:
+         - For consolidated-only fields (balance aggregates + revenue + cashflow):
+           require ratio ∈ [1.0, 3.0] — prefer larger, reject smaller.
+         - For other aggregates (net_profit, operating_profit, …):
+           require ratio ∈ [0.3, 3.0].
     """
     if existing is None:
         return True
@@ -235,6 +254,8 @@ def _should_overwrite_aggregate(existing: float | None, new: float | None) -> bo
     if existing == 0:
         return new != 0
     ratio = abs_n / abs_e
+    if field in _CONSOLIDATED_ONLY_FIELDS:
+        return 1.0 <= ratio <= _AGGREGATE_RATIO_MAX
     return _AGGREGATE_RATIO_MIN <= ratio <= _AGGREGATE_RATIO_MAX
 
 
@@ -344,7 +365,7 @@ class TableExtractor:
             if new_spec < existing_spec:
                 continue  # less-specific label, don't overwrite
             if field in aggregate_fields:
-                if _should_overwrite_aggregate(target.get(field), converted):
+                if _should_overwrite_aggregate(target.get(field), converted, field=field):
                     target[field] = converted
                     label_specificity[field] = new_spec
             elif field not in target:
@@ -418,7 +439,7 @@ class TableExtractor:
                 converted = self._convert_value(
                     value, self._get_field_meta("core_performance_indicators_sheet", field), source_unit
                 )
-                if _should_overwrite_aggregate(target.get(field), converted):
+                if _should_overwrite_aggregate(target.get(field), converted, field=field):
                     target[field] = converted
                     label_specificity[field] = new_spec
             idx += max(1, consumed_rows + 1)
