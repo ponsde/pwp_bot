@@ -17,10 +17,12 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-SITE="$ROOT/.venv/lib/python3.12/site-packages"
+# SITE override for Docker / system installs; defaults to the project venv.
+SITE="${SITE:-$ROOT/.venv/lib/python3.12/site-packages}"
+export SITE   # make it visible to the embedded python3 -c blocks below
 
 if [ ! -d "$SITE/vikingbot" ]; then
-    echo "error: $SITE/vikingbot not found. Is the venv set up?" >&2
+    echo "error: $SITE/vikingbot not found. Point SITE= at the Python site-packages root." >&2
     exit 1
 fi
 
@@ -28,8 +30,8 @@ fi
 MANUAL_FIX_MARKER="Read API key from ov.conf bot.channels"
 if ! grep -q "$MANUAL_FIX_MARKER" "$SITE/vikingbot/cli/commands.py"; then
     python3 - <<'PY'
-import pathlib, re
-p = pathlib.Path("/home/ponsde/taidi_bei/.venv/lib/python3.12/site-packages/vikingbot/cli/commands.py")
+import os, pathlib
+p = pathlib.Path(os.environ["SITE"]) / "vikingbot" / "cli" / "commands.py"
 src = p.read_text()
 old = (
     '        openapi_config = OpenAPIChannelConfig(\n'
@@ -68,7 +70,9 @@ PY
 fi
 
 apply_patch () {
-    local patch_file="$1"
+    local patch_file
+    # Absolutize so the subshell's `cd "$SITE"` doesn't lose the path.
+    patch_file="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
     local strip="$2"
     echo "applying $(basename "$patch_file")..."
     if (cd "$SITE" && patch -p"$strip" --dry-run -f < "$patch_file" > /dev/null 2>&1); then
@@ -97,8 +101,8 @@ apply_patch "$PR23" 1
 LOOP="$SITE/vikingbot/agent/loop.py"
 if ! grep -q "on_content_delta=on_content_delta" "$LOOP"; then
     python3 - <<'PY'
-import pathlib
-p = pathlib.Path("/home/ponsde/taidi_bei/.venv/lib/python3.12/site-packages/vikingbot/agent/loop.py")
+import os, pathlib
+p = pathlib.Path(os.environ["SITE"]) / "vikingbot" / "agent" / "loop.py"
 src = p.read_text()
 old = (
     '            response = await self.provider.chat(\n'

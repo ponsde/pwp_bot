@@ -37,8 +37,10 @@ COPY . .
 # Overlay the built SPA
 COPY --from=frontend /app/web-studio/dist ./web-studio/dist
 
-# Overlay our patched vikingbot (MCP + CORS + api_key fixes from PR #1392)
-COPY vikingbot_pkg/ /usr/local/lib/python3.12/site-packages/vikingbot/
+# Apply the streaming + api_key patches from OpenViking PR #13 / #23 onto
+# the pip-installed vikingbot. The script picks up SITE from env.
+RUN SITE=/usr/local/lib/python3.12/site-packages \
+        bash /app/scripts/bot_streaming_patches/apply.sh
 
 # Startup script: generate ov.conf from env vars, start vikingbot + FastAPI
 COPY <<'STARTUP' /app/start.sh
