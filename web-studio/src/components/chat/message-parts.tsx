@@ -297,25 +297,22 @@ function ReferencesList({ refs }: { refs: Ref[] }) {
         return (
           <li key={i} className="rounded-md border border-border/40 bg-background/60">
             {href ? (
-              <button
-                type="button"
-                className="block w-full px-2.5 py-1.5 text-left transition-colors hover:bg-muted/50 cursor-pointer"
-                onClick={(e) => {
-                  // TanStack Router installs a global link interceptor; using
-                  // a plain <a> + window.location.href was still intercepted
-                  // in some paths. A <button> + explicit window.open bypasses
-                  // any router-level handling entirely.
-                  e.preventDefault()
+              <a
+                href={href}
+                target="_blank"
+                rel="noopener noreferrer"
+                // Capture phase beats TanStack Router's bubble-phase listener.
+                onClickCapture={(e) => {
                   e.stopPropagation()
-                  if (e.ctrlKey || e.metaKey || e.shiftKey) {
-                    window.open(href, '_blank', 'noopener')
-                  } else {
-                    window.open(href, '_self')
-                  }
+                  // Let the browser handle the navigation natively; don't
+                  // preventDefault. target="_blank" + rel="noopener" opens
+                  // the PDF in a new tab which is what you want for a
+                  // reference anyway.
                 }}
+                className="block w-full px-2.5 py-1.5 text-left transition-colors hover:bg-muted/50 cursor-pointer"
               >
                 {inner}
-              </button>
+              </a>
             ) : (
               <div className="px-2.5 py-1.5">{inner}</div>
             )}
