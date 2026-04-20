@@ -6,9 +6,17 @@ def test_normalize_strips_full_bracket_note():
     assert TableExtractor._normalize_label("一、利润总额（亏损总额以-号填列）") == "利润总额"
 
 
-def test_normalize_strips_unclosed_trailing_bracket():
-    # pdfplumber truncation: "四、利润总额（亏损总额以"－"号" (bracket never closes)
-    assert TableExtractor._normalize_label("四、利润总额（亏损总额以\"－\"号") == "利润总额"
+def test_normalize_keeps_unclosed_trailing_bracket_by_default():
+    # Default: preserve unclosed bracket tail so the accumulation loop can
+    # combine with a following-row fragment (e.g. "股)" completing "(元/股)").
+    # (The strict mode, which actually strips, is tested below.)
+    assert "（" in TableExtractor._normalize_label("四、利润总额（亏损总额以\"－\"号")
+
+
+def test_normalize_strict_strips_unclosed_trailing_bracket():
+    # Strict mode, used as a fallback when accumulation+default normalize
+    # didn't produce an alias match.
+    assert TableExtractor._normalize_label("四、利润总额（亏损总额以\"－\"号", strip_unclosed_tail=True) == "利润总额"
 
 
 def test_normalize_strips_prefix_variants():

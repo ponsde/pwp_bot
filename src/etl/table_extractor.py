@@ -343,11 +343,18 @@ class TableExtractor:
                         else:
                             pending_label = ""
                 continue
-            label = self._normalize_label(pending_label + cells[0])
+            raw_label = pending_label + cells[0]
+            label = self._normalize_label(raw_label)
             pending_label = ""
             if not label or label in {"项目", "科目", "资产", "负债", "流动资产", "非流动资产", "流动负债", "非流动负债"}:
                 continue
             field = aliases.get(label)
+            if field is None and ("（" in raw_label or "(" in raw_label):
+                strict = self._normalize_label(raw_label, strip_unclosed_tail=True)
+                if strict != label:
+                    strict_field = aliases.get(strict)
+                    if strict_field is not None:
+                        label, field = strict, strict_field
             if not field:
                 continue
             value = self._select_statement_value(row, current_col_idx, previous_col_idx)
@@ -428,6 +435,15 @@ class TableExtractor:
                 if next_field is not None:
                     break
             field = aliases.get(label)
+            if field is None and ("（" in label or "(" in label):
+                # Fallback: the label may still have an unclosed trailing '（...'
+                # that the accumulation loop couldn't resolve into a closed bracket.
+                # Strip it and retry.
+                strict = self._normalize_label(label, strip_unclosed_tail=True)
+                if strict != label:
+                    strict_field = aliases.get(strict)
+                    if strict_field is not None:
+                        label, field = strict, strict_field
             if not field:
                 idx += max(1, consumed_rows + 1)
                 continue
@@ -507,7 +523,19 @@ class TableExtractor:
                     cash[ratio_field] = round((numerator_value / net_cash_flow) * 100, 4)
 
     @staticmethod
-    def _normalize_label(label: str) -> str:
+    def _normalize_label(label: str, *, strip_unclosed_tail: bool = False) -> str:
+        """Normalize a label to its canonical form for alias lookup.
+
+        Default behavior (strip_unclosed_tail=False) does NOT strip an unclosed
+        trailing '（...' because pdfplumber often splits bracketed unit suffixes
+        across rows (e.g., row A "基本每股收益（元/" + row B "股）") and the
+        core extractor relies on accumulating these rows into a closed bracket
+        that BRACKET_NOTE_RE can then strip cleanly.
+
+        Pass strip_unclosed_tail=True as a fallback when the regular normalize
+        failed to match any alias — e.g., when pdfplumber truncates a label at
+        end of row so the closing ')' never appears.
+        """
         text = str(label).replace("\n", "").strip()
         while True:
             new_text = PREFIX_RE.sub("", text)
@@ -515,10 +543,12 @@ class TableExtractor:
                 break
             text = new_text.strip()
         text = BRACKET_NOTE_RE.sub("", text).strip()
-        text = UNCLOSED_TAIL_BRACKET_RE.sub("", text).strip()
+        if strip_unclosed_tail:
+            text = UNCLOSED_TAIL_BRACKET_RE.sub("", text).strip()
         text = text.replace("/", "").replace("－", "-")
         text = re.sub(r"[：:、,，。\s]+", "", text)
         return text
+
 
     @staticmethod
     def _clean_text(value: Any) -> str:
