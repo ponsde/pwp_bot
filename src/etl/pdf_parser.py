@@ -10,7 +10,16 @@ import pdfplumber
 from src.etl.schema import load_company_mapping
 
 
-SZSE_RE = re.compile(r"(?P<abbr>[^：:]+)[：:](?P<year>20\d{2})年(?P<period>年度报告摘要|年度报告|一季度报告|半年度报告摘要|半年度报告|三季度报告)")
+SZSE_RE = re.compile(
+    r"(?P<abbr>[^：:]+)[：:]"
+    r".*?"                                   # optional: repeated abbr before year
+    r"(?P<year>20\d{2})年"
+    r"(?P<period>"
+    r"(?:第?一季度报告|半年度报告摘要|半年度报告|第?三季度报告|年度报告摘要|年度报告)"
+    r"(?:全文)?"
+    r")"
+    r"(?:（[^）]+）)?"                        # optional trailing: (更新后)/(更正后)/(英文版)/...
+)
 SSE_FILE_RE = re.compile(r"(?P<code>\d{6})_(?P<date>\d{8})_[A-Z0-9]+\.pdf$")
 SSE_TITLE_RE = re.compile(r"(?P<year>20\d{2})\s*年\s*(?P<period>年度报告摘要|年度报告|第一季度报告|半年度报告摘要|半年度报告|第三季度报告)")
 
@@ -122,7 +131,8 @@ class PDFParser:
         period_name = m.group("period")
         year = int(m.group("year"))
         is_summary = "摘要" in period_name
-        period = f"{year}{PERIOD_MAP[period_name.replace('摘要','')]}"
+        normalized = period_name.replace("摘要", "").replace("全文", "")
+        period = f"{year}{PERIOD_MAP[normalized]}"
         return {
             "stock_code": info["stock_code"],
             "stock_abbr": stock_abbr,
@@ -147,7 +157,7 @@ class PDFParser:
             year = int(t.group("year"))
             period_name = t.group("period")
             is_summary = "摘要" in period_name
-            normalized = period_name.replace("摘要", "")
+            normalized = period_name.replace("摘要", "").replace("全文", "")
             period = f"{year}{PERIOD_MAP[normalized]}"
         else:
             year, period, is_summary = self._infer_sse_period_from_filename_date(file_date)
