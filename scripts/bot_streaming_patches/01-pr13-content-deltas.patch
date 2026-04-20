@@ -1,0 +1,493 @@
+diff --git a/vikingbot/agent/loop.py b/vikingbot/agent/loop.py
+index 2bfef8e51..233605ac6 100644
+--- a/vikingbot/agent/loop.py
++++ b/vikingbot/agent/loop.py
+@@ -250,11 +250,35 @@ async def _run_agent_loop(
+                     )
+                 )
+ 
++            on_content_delta = None
++            on_reasoning_delta = None
++            if publish_events:
++
++                async def on_content_delta(piece: str) -> None:
++                    await self.bus.publish_outbound(
++                        OutboundMessage(
++                            session_key=session_key,
++                            content=piece,
++                            event_type=OutboundEventType.CONTENT_DELTA,
++                        )
++                    )
++
++                async def on_reasoning_delta(piece: str) -> None:
++                    await self.bus.publish_outbound(
++                        OutboundMessage(
++                            session_key=session_key,
++                            content=piece,
++                            event_type=OutboundEventType.REASONING_DELTA,
++                        )
++                    )
++
+             response = await self.provider.chat(
+                 messages=messages,
+                 tools=self.tools.get_definitions(),
+                 model=self.model,
+                 session_id=session_key.safe_name(),
++                on_content_delta=on_content_delta,
++                on_reasoning_delta=on_reasoning_delta,
+             )
+             if response.usage:
+                 cur_token = response.usage
+diff --git a/vikingbot/bus/events.py b/vikingbot/bus/events.py
+index fb2f03c1c..bf3dff8f5 100644
+--- a/vikingbot/bus/events.py
++++ b/vikingbot/bus/events.py
+@@ -14,9 +14,12 @@ class OutboundEventType(str, Enum):
+     RESPONSE = "response"  # Normal response message
+     TOOL_CALL = "tool_call"  # Tool being called
+     TOOL_RESULT = "tool_result"  # Result from tool execution
+-    REASONING = "reasoning"  # Reasoning content
++    REASONING = "reasoning"  # Reasoning content (complete block)
+     ITERATION = "iteration"  # Iteration marker
+     NO_REPLY = "no_reply"  # No reply required
++    CONTENT_DELTA = "content_delta"  # Incremental content chunk from streaming LLM
++    REASONING_DELTA = "reasoning_delta"  # Incremental reasoning chunk from streaming LLM
++    DONE = "done"  # Stream terminator
+ 
+ 
+ @dataclass
+diff --git a/vikingbot/channels/openapi.py b/vikingbot/channels/openapi.py
+index c97238a6e..01fe06219 100644
+--- a/vikingbot/channels/openapi.py
++++ b/vikingbot/channels/openapi.py
+@@ -192,6 +192,10 @@ async def send(self, msg: OutboundMessage) -> None:
+                 await pending.add_event("tool_call", msg.content)
+             elif msg.event_type == OutboundEventType.TOOL_RESULT:
+                 await pending.add_event("tool_result", msg.content)
++            elif msg.event_type == OutboundEventType.CONTENT_DELTA:
++                await pending.add_event("content_delta", msg.content)
++            elif msg.event_type == OutboundEventType.REASONING_DELTA:
++                await pending.add_event("reasoning_delta", msg.content)
+             return
+ 
+         # Handle as normal OpenAPIChannel message
+@@ -213,6 +217,10 @@ async def send(self, msg: OutboundMessage) -> None:
+             await pending.add_event("tool_call", msg.content)
+         elif msg.event_type == OutboundEventType.TOOL_RESULT:
+             await pending.add_event("tool_result", msg.content)
++        elif msg.event_type == OutboundEventType.CONTENT_DELTA:
++            await pending.add_event("content_delta", msg.content)
++        elif msg.event_type == OutboundEventType.REASONING_DELTA:
++            await pending.add_event("reasoning_delta", msg.content)
+ 
+     def get_router(self) -> APIRouter:
+         """Get or create the FastAPI router."""
+@@ -516,10 +524,14 @@ async def event_generator():
+                         yield f"data: {ChatStreamEvent(event=EventType.RESPONSE, data={'error': 'timeout'}).model_dump_json()}\n\n"
+                         break
+ 
++                # Signal end of stream so clients can close cleanly.
++                yield f"data: {ChatStreamEvent(event=EventType.DONE, data={}).model_dump_json()}\n\n"
++
+             except Exception as e:
+                 logger.exception(f"Error in stream generator: {e}")
+                 error_event = ChatStreamEvent(event=EventType.RESPONSE, data={"error": str(e)})
+                 yield f"data: {error_event.model_dump_json()}\n\n"
++                yield f"data: {ChatStreamEvent(event=EventType.DONE, data={}).model_dump_json()}\n\n"
+             finally:
+                 self._pending.pop(session_id, None)
+ 
+@@ -662,10 +674,14 @@ async def event_generator():
+                         yield f"data: {ChatStreamEvent(event=EventType.RESPONSE, data={'error': 'timeout'}).model_dump_json()}\n\n"
+                         break
+ 
++                # Signal end of stream so clients can close cleanly.
++                yield f"data: {ChatStreamEvent(event=EventType.DONE, data={}).model_dump_json()}\n\n"
++
+             except Exception as e:
+                 logger.exception(f"Error in bot stream generator for channel {channel_id}: {e}")
+                 error_event = ChatStreamEvent(event=EventType.RESPONSE, data={"error": str(e)})
+                 yield f"data: {error_event.model_dump_json()}\n\n"
++                yield f"data: {ChatStreamEvent(event=EventType.DONE, data={}).model_dump_json()}\n\n"
+             finally:
+                 # Clean up pending
+                 if channel_id in self._bot_pending:
+diff --git a/vikingbot/channels/openapi_models.py b/vikingbot/channels/openapi_models.py
+index bc0ef6087..8f33efc0a 100644
+--- a/vikingbot/channels/openapi_models.py
++++ b/vikingbot/channels/openapi_models.py
+@@ -24,6 +24,9 @@ class EventType(str, Enum):
+     TOOL_RESULT = "tool_result"
+     REASONING = "reasoning"
+     ITERATION = "iteration"
++    CONTENT_DELTA = "content_delta"
++    REASONING_DELTA = "reasoning_delta"
++    DONE = "done"
+ 
+ 
+ class ChatMessage(BaseModel):
+diff --git a/vikingbot/providers/base.py b/vikingbot/providers/base.py
+index 6d00de8f1..81ce77069 100644
+--- a/vikingbot/providers/base.py
++++ b/vikingbot/providers/base.py
+@@ -1,8 +1,15 @@
+ """Base LLM provider interface."""
+ 
++import json
+ from abc import ABC, abstractmethod
+ from dataclasses import dataclass, field
+-from typing import Any
++from typing import Any, AsyncIterator, Awaitable, Callable
++
++from loguru import logger
++
++from vikingbot.utils.helpers import cal_str_tokens
++
++DeltaCallback = Callable[[str], Awaitable[None]]
+ 
+ 
+ @dataclass
+@@ -52,6 +59,8 @@ async def chat(
+         max_tokens: int = 4096,
+         temperature: float = 0.7,
+         session_id: str | None = None,
++        on_content_delta: DeltaCallback | None = None,
++        on_reasoning_delta: DeltaCallback | None = None,
+     ) -> LLMResponse:
+         """
+         Send a chat completion request.
+@@ -63,9 +72,13 @@ async def chat(
+             max_tokens: Maximum tokens in response.
+             temperature: Sampling temperature.
+             session_id: Optional session ID for tracing.
++            on_content_delta: Optional async callback invoked with each incremental
++                content chunk. When provided, the provider streams from the LLM.
++            on_reasoning_delta: Optional async callback invoked with each incremental
++                reasoning chunk (for reasoning-capable models).
+ 
+         Returns:
+-            LLMResponse with content and/or tool calls.
++            LLMResponse with accumulated content and/or tool calls.
+         """
+         pass
+ 
+@@ -73,3 +86,123 @@ async def chat(
+     def get_default_model(self) -> str:
+         """Get the default model for this provider."""
+         pass
++
++
++def extract_usage(usage_obj: Any) -> dict[str, int]:
++    """Extract usage dict from an OpenAI-shape usage object (streaming or not)."""
++    usage: dict[str, int] = {
++        "prompt_tokens": getattr(usage_obj, "prompt_tokens", 0) or 0,
++        "completion_tokens": getattr(usage_obj, "completion_tokens", 0) or 0,
++        "total_tokens": getattr(usage_obj, "total_tokens", 0) or 0,
++    }
++    details = getattr(usage_obj, "prompt_tokens_details", None)
++    if details is not None:
++        cached = getattr(details, "cached_tokens", None)
++        if cached:
++            usage["cache_read_input_tokens"] = cached
++    elif hasattr(usage_obj, "cache_read_input_tokens"):
++        cached = getattr(usage_obj, "cache_read_input_tokens", None)
++        if cached:
++            usage["cache_read_input_tokens"] = cached
++    return usage
++
++
++async def consume_stream(
++    stream_iter: AsyncIterator[Any],
++    on_content_delta: DeltaCallback | None,
++    on_reasoning_delta: DeltaCallback | None,
++) -> LLMResponse:
++    """
++    Consume an OpenAI-shape streaming response (LiteLLM or OpenAI SDK), forwarding
++    deltas to callbacks and accumulating the full content / tool_calls / usage
++    into a single LLMResponse.
++    """
++    content_parts: list[str] = []
++    reasoning_parts: list[str] = []
++    # Tool calls arrive in chunks keyed by index; accumulate per index.
++    tool_call_acc: dict[int, dict[str, Any]] = {}
++    finish_reason: str = "stop"
++    usage: dict[str, int] = {}
++
++    async for chunk in stream_iter:
++        chunk_usage = getattr(chunk, "usage", None)
++        if chunk_usage:
++            usage = extract_usage(chunk_usage)
++
++        choices = getattr(chunk, "choices", None) or []
++        if not choices:
++            continue
++        choice = choices[0]
++
++        if getattr(choice, "finish_reason", None):
++            finish_reason = choice.finish_reason
++
++        delta = getattr(choice, "delta", None)
++        if delta is None:
++            continue
++
++        content_piece = getattr(delta, "content", None)
++        if content_piece:
++            content_parts.append(content_piece)
++            if on_content_delta is not None:
++                try:
++                    await on_content_delta(content_piece)
++                except Exception as cb_err:
++                    logger.debug(f"on_content_delta callback failed: {cb_err}")
++
++        reasoning_piece = getattr(delta, "reasoning_content", None)
++        if reasoning_piece:
++            reasoning_parts.append(reasoning_piece)
++            if on_reasoning_delta is not None:
++                try:
++                    await on_reasoning_delta(reasoning_piece)
++                except Exception as cb_err:
++                    logger.debug(f"on_reasoning_delta callback failed: {cb_err}")
++
++        delta_tool_calls = getattr(delta, "tool_calls", None)
++        if delta_tool_calls:
++            for dtc in delta_tool_calls:
++                idx = getattr(dtc, "index", 0) or 0
++                slot = tool_call_acc.setdefault(
++                    idx, {"id": None, "name": None, "arguments": ""}
++                )
++                if getattr(dtc, "id", None):
++                    slot["id"] = dtc.id
++                fn = getattr(dtc, "function", None)
++                if fn is not None:
++                    if getattr(fn, "name", None):
++                        slot["name"] = fn.name
++                    args_piece = getattr(fn, "arguments", None)
++                    if args_piece:
++                        slot["arguments"] += args_piece
++
++    tool_calls: list[ToolCallRequest] = []
++    for idx in sorted(tool_call_acc.keys()):
++        slot = tool_call_acc[idx]
++        name = slot.get("name") or ""
++        args_str = slot.get("arguments") or ""
++        tokens = cal_str_tokens(name, text_type="en")
++        if args_str:
++            tokens += cal_str_tokens(args_str, text_type="mixed")
++        try:
++            args = json.loads(args_str) if args_str else {}
++        except json.JSONDecodeError:
++            args = {"raw": args_str}
++        if not isinstance(args, dict):
++            args = {"raw": args_str}
++        tool_calls.append(
++            ToolCallRequest(
++                id=slot.get("id") or f"tool_{idx}",
++                name=name,
++                arguments=args,
++                tokens=tokens,
++            )
++        )
++
++    return LLMResponse(
++        content="".join(content_parts) or None,
++        tool_calls=tool_calls,
++        finish_reason=finish_reason,
++        usage=usage,
++        reasoning_content="".join(reasoning_parts) or None,
++    )
+diff --git a/vikingbot/providers/litellm_provider.py b/vikingbot/providers/litellm_provider.py
+index 5bca3627f..1e7b09cc5 100644
+--- a/vikingbot/providers/litellm_provider.py
++++ b/vikingbot/providers/litellm_provider.py
+@@ -9,7 +9,13 @@
+ from loguru import logger
+ 
+ from vikingbot.integrations.langfuse import LangfuseClient
+-from vikingbot.providers.base import LLMProvider, LLMResponse, ToolCallRequest
++from vikingbot.providers.base import (
++    DeltaCallback,
++    LLMProvider,
++    LLMResponse,
++    ToolCallRequest,
++    consume_stream,
++)
+ from vikingbot.providers.registry import find_by_model, find_gateway
+ from vikingbot.utils.helpers import cal_str_tokens
+ 
+@@ -170,10 +176,16 @@ async def chat(
+         max_tokens: int = 4096,
+         temperature: float = 0.7,
+         session_id: str | None = None,
++        on_content_delta: DeltaCallback | None = None,
++        on_reasoning_delta: DeltaCallback | None = None,
+     ) -> LLMResponse:
+         """
+         Send a chat completion request via LiteLLM.
+ 
++        When either delta callback is provided, the request is sent with
++        stream=True and chunks are forwarded through the callbacks while being
++        accumulated into the final LLMResponse.
++
+         Args:
+             messages: List of message dicts with 'role' and 'content'.
+             tools: Optional list of tool definitions in OpenAI format.
+@@ -181,9 +193,13 @@ async def chat(
+             max_tokens: Maximum tokens in response.
+             temperature: Sampling temperature.
+             session_id: Optional session ID for tracing.
++            on_content_delta: Optional async callback invoked with each
++                incremental content chunk.
++            on_reasoning_delta: Optional async callback invoked with each
++                incremental reasoning chunk.
+ 
+         Returns:
+-            LLMResponse with content and/or tool calls.
++            LLMResponse with accumulated content and/or tool calls.
+         """
+         model = self._resolve_model(model or self.default_model)
+ 
+@@ -233,8 +249,19 @@ async def chat(
+                         metadata=metadata,
+                     )
+ 
+-            response = await acompletion(**kwargs)
+-            llm_response = self._parse_response(response)
++            streaming = on_content_delta is not None or on_reasoning_delta is not None
++            if streaming:
++                kwargs["stream"] = True
++                kwargs["stream_options"] = {"include_usage": True}
++                stream_iter = await acompletion(**kwargs)
++                llm_response = await consume_stream(
++                    stream_iter,
++                    on_content_delta=on_content_delta,
++                    on_reasoning_delta=on_reasoning_delta,
++                )
++            else:
++                response = await acompletion(**kwargs)
++                llm_response = self._parse_response(response)
+ 
+             # Update and end Langfuse observation
+             if langfuse_observation:
+@@ -322,11 +349,14 @@ def _parse_response(self, response: Any) -> LLMResponse:
+                 args = tc.function.arguments
+                 tokens = cal_str_tokens(tc.function.name, text_type="en")
+                 if isinstance(args, str):
++                    raw_args = args
+                     try:
+-                        tokens += cal_str_tokens(args, text_type="mixed")
+-                        args = json.loads(args)
++                        tokens += cal_str_tokens(raw_args, text_type="mixed")
++                        args = json.loads(raw_args)
+                     except json.JSONDecodeError:
+-                        args = {"raw": args}
++                        args = {"raw": raw_args}
++                    if not isinstance(args, dict):
++                        args = {"raw": raw_args}
+ 
+                 tool_calls.append(
+                     ToolCallRequest(id=tc.id, name=tc.function.name, arguments=args, tokens=tokens)
+diff --git a/vikingbot/providers/openai_compatible_provider.py b/vikingbot/providers/openai_compatible_provider.py
+index 7433d2f3a..a317247f6 100644
+--- a/vikingbot/providers/openai_compatible_provider.py
++++ b/vikingbot/providers/openai_compatible_provider.py
+@@ -13,7 +13,13 @@
+ from loguru import logger
+ 
+ from vikingbot.integrations.langfuse import LangfuseClient
+-from vikingbot.providers.base import LLMProvider, LLMResponse, ToolCallRequest
++from vikingbot.providers.base import (
++    DeltaCallback,
++    LLMProvider,
++    LLMResponse,
++    ToolCallRequest,
++    consume_stream,
++)
+ from vikingbot.utils.helpers import cal_str_tokens
+ 
+ 
+@@ -112,10 +118,16 @@ async def chat(
+         max_tokens: int = 4096,
+         temperature: float = 0.7,
+         session_id: str | None = None,
++        on_content_delta: DeltaCallback | None = None,
++        on_reasoning_delta: DeltaCallback | None = None,
+     ) -> LLMResponse:
+         """
+         Send a chat completion request to OpenAI-compatible API.
+ 
++        When either delta callback is provided, the request is sent with
++        stream=True and chunks are forwarded through the callbacks while being
++        accumulated into the final LLMResponse.
++
+         Args:
+             messages: List of message dicts with 'role' and 'content'.
+             tools: Optional list of tool definitions in OpenAI format.
+@@ -123,9 +135,13 @@ async def chat(
+             max_tokens: Maximum tokens in response.
+             temperature: Sampling temperature.
+             session_id: Optional session ID for tracing.
++            on_content_delta: Optional async callback invoked with each
++                incremental content chunk.
++            on_reasoning_delta: Optional async callback invoked with each
++                incremental reasoning chunk.
+ 
+         Returns:
+-            LLMResponse with content and/or tool calls.
++            LLMResponse with accumulated content and/or tool calls.
+         """
+         model = model or self.default_model
+ 
+@@ -159,8 +175,33 @@ async def chat(
+                         metadata=metadata,
+                     )
+ 
+-            response = await self.client.chat.completions.create(**kwargs)
+-            llm_response = self._parse_response(response)
++            streaming = on_content_delta is not None or on_reasoning_delta is not None
++            if streaming:
++                kwargs["stream"] = True
++                kwargs["stream_options"] = {"include_usage": True}
++                try:
++                    stream_iter = await self.client.chat.completions.create(**kwargs)
++                except Exception as stream_err:
++                    # Some OpenAI-compatible gateways reject unknown params with
++                    # a 4xx. Retry once without stream_options so usage tracking
++                    # degrades gracefully instead of failing the whole request.
++                    err_text = str(stream_err).lower()
++                    if "stream_options" in err_text or "include_usage" in err_text:
++                        logger.info(
++                            "Gateway rejected stream_options; retrying without usage tracking"
++                        )
++                        kwargs.pop("stream_options", None)
++                        stream_iter = await self.client.chat.completions.create(**kwargs)
++                    else:
++                        raise
++                llm_response = await consume_stream(
++                    stream_iter,
++                    on_content_delta=on_content_delta,
++                    on_reasoning_delta=on_reasoning_delta,
++                )
++            else:
++                response = await self.client.chat.completions.create(**kwargs)
++                llm_response = self._parse_response(response)
+ 
+             # Update and end Langfuse observation
+             if langfuse_observation:
+@@ -248,11 +289,14 @@ def _parse_response(self, response: Any) -> LLMResponse:
+                 args = tc.function.arguments
+                 tokens = cal_str_tokens(tc.function.name, text_type="en")
+                 if isinstance(args, str):
++                    raw_args = args
+                     try:
+-                        tokens += cal_str_tokens(args, text_type="mixed")
+-                        args = json.loads(args)
++                        tokens += cal_str_tokens(raw_args, text_type="mixed")
++                        args = json.loads(raw_args)
+                     except json.JSONDecodeError:
+-                        args = {"raw": args}
++                        args = {"raw": raw_args}
++                    if not isinstance(args, dict):
++                        args = {"raw": raw_args}
+ 
+                 tool_calls.append(
+                     ToolCallRequest(id=tc.id, name=tc.function.name, arguments=args, tokens=tokens)
