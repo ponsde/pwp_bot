@@ -297,20 +297,25 @@ function ReferencesList({ refs }: { refs: Ref[] }) {
         return (
           <li key={i} className="rounded-md border border-border/40 bg-background/60">
             {href ? (
-              <a
-                href={href}
-                className="block px-2.5 py-1.5 transition-colors hover:bg-muted/50 cursor-pointer"
+              <button
+                type="button"
+                className="block w-full px-2.5 py-1.5 text-left transition-colors hover:bg-muted/50 cursor-pointer"
                 onClick={(e) => {
-                  // TanStack Router installs a global click interceptor for
-                  // in-app links; force a hard navigation for static /papers
-                  // URLs so the browser opens the PDF natively.
-                  if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey) return
+                  // TanStack Router installs a global link interceptor; using
+                  // a plain <a> + window.location.href was still intercepted
+                  // in some paths. A <button> + explicit window.open bypasses
+                  // any router-level handling entirely.
                   e.preventDefault()
-                  window.location.href = href
+                  e.stopPropagation()
+                  if (e.ctrlKey || e.metaKey || e.shiftKey) {
+                    window.open(href, '_blank', 'noopener')
+                  } else {
+                    window.open(href, '_self')
+                  }
                 }}
               >
                 {inner}
-              </a>
+              </button>
             ) : (
               <div className="px-2.5 py-1.5">{inner}</div>
             )}

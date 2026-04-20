@@ -302,25 +302,23 @@ const AssistantMessage = memo(function AssistantMessage({
     <div className={`group/msg flex w-full max-w-3xl gap-3 items-start ${compact ? 'mb-1.5' : 'mb-5'}`}>
       {!compact ? <BotAvatar /> : <div className="w-7 shrink-0" />}
       <div className="max-w-full min-w-0 flex-1 rounded-2xl rounded-tl-sm bg-background/95 px-4 py-3 text-sm shadow-sm ring-1 ring-border/30">
-        {message.parts.map((part, i) => {
-          switch (part.type) {
-            case 'text':
-              return editing ? null : <MarkdownContent key={i} content={part.text} />
-            case 'tool':
-              return (
-                <ToolCallBlock
-                  key={i}
-                  toolName={part.tool_name}
-                  args={part.tool_input}
-                  result={part.tool_output}
-                  isError={part.tool_status === 'error'}
-                  isRunning={false}
-                />
-              )
-            case 'context':
-              return null
-          }
-        })}
+        {/* Render text first; tool calls sit beneath the assistant's
+            answer as collapsible evidence blocks. */}
+        {!editing && message.parts
+          .filter((p) => p.type === 'text')
+          .map((p, i) => <MarkdownContent key={`t${i}`} content={(p as { text: string }).text} />)}
+        {message.parts
+          .filter((p) => p.type === 'tool')
+          .map((part, i) => (
+            <ToolCallBlock
+              key={`tc${i}`}
+              toolName={(part as { tool_name: string }).tool_name}
+              args={(part as { tool_input: Record<string, unknown> }).tool_input}
+              result={(part as { tool_output?: string }).tool_output}
+              isError={(part as { tool_status?: string }).tool_status === 'error'}
+              isRunning={false}
+            />
+          ))}
         {editing && (
           <div>
             <textarea autoFocus value={editText} onChange={(e) => setEditText(e.target.value)}
@@ -383,6 +381,12 @@ function StreamingAssistantMessage({
 
         <ReasoningBlock reasoning={reasoning} isRunning />
 
+        {content ? (
+          <MarkdownContent content={content} isStreaming />
+        ) : !hasContent ? (
+          <TypingIndicator />
+        ) : null}
+
         {toolCalls.map((tc, i) => {
           let args: Record<string, unknown> = {}
           try {
@@ -400,12 +404,6 @@ function StreamingAssistantMessage({
             />
           )
         })}
-
-        {content ? (
-          <MarkdownContent content={content} isStreaming />
-        ) : !hasContent ? (
-          <TypingIndicator />
-        ) : null}
       </div>
     </div>
   )
