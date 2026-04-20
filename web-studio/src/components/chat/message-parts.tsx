@@ -299,7 +299,15 @@ function ReferencesList({ refs }: { refs: Ref[] }) {
             {href ? (
               <a
                 href={href}
-                className="block px-2.5 py-1.5 transition-colors hover:bg-muted/50"
+                className="block px-2.5 py-1.5 transition-colors hover:bg-muted/50 cursor-pointer"
+                onClick={(e) => {
+                  // TanStack Router installs a global click interceptor for
+                  // in-app links; force a hard navigation for static /papers
+                  // URLs so the browser opens the PDF natively.
+                  if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey) return
+                  e.preventDefault()
+                  window.location.href = href
+                }}
               >
                 {inner}
               </a>

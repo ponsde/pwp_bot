@@ -325,10 +325,17 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     setMessages((prev) => {
       const idx = prev.findIndex((m) => m.id === id)
       if (idx === -1 || prev[idx].role !== 'user') return prev
-      return prev.slice(0, idx)
+      const next = prev.map((m, i) => {
+        if (i !== idx) return m
+        const newParts = m.parts.map((p) =>
+          p.type === 'text' ? { ...p, text: newContent } : p,
+        )
+        return { ...m, parts: newParts }
+      })
+      if (persistMessages) syncMessagesToStore(sessionId, next).catch(() => {})
+      return next
     })
-    setTimeout(() => { void send(newContent) }, 0)
-  }, [status, send])
+  }, [status, sessionId, persistMessages])
 
   const editAssistantMessage = useCallback((id: string, newContent: string) => {
     setMessages((prev) => {
