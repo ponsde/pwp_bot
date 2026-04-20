@@ -108,6 +108,7 @@ def _merge_dbs(shard_dbs: list[Path], target_db: Path) -> None:
                     except sqlite3.OperationalError as exc:
                         # table may not exist in shard if schema changed; skip safely
                         print(f"[merge] skip {shard.name}.{table}: {exc}", flush=True)
+                conn.commit()
             finally:
                 conn.execute("DETACH DATABASE shard")
         conn.commit()
