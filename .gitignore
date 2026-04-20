@@ -66,6 +66,8 @@ references/
 .openviking/.openviking.pid
 .openviking/*.log
 .openviking/logs/
+.openviking/bot/sessions/
+.openviking/bot/workspace/shared/
 
 # ── web-studio (Vite app) ─────────────────────────────────────
 web-studio/node_modules/
