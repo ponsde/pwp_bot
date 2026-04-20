@@ -203,6 +203,11 @@ function extractReferences(raw: string): Ref[] {
 function coerceRefs(items: unknown[]): Ref[] {
   const out: Ref[] = []
   for (const item of items) {
+    if (typeof item === 'string' && item.trim()) {
+      // Plain string (e.g. mcp_fin_query sources array: "数据来源: income_sheet")
+      out.push({ text: item.trim() })
+      continue
+    }
     if (!item || typeof item !== 'object') continue
     const it = item as Record<string, unknown>
     const pp = pickStr(it, ['paper_path', 'path', 'file', 'source', 'uri'])
