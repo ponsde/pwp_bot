@@ -134,6 +134,7 @@ export function Thread({ sessionId }: ThreadProps) {
             onRetry={chat.retry}
             onRetryAssistant={chat.retryAssistant}
             onSwitchVersion={chat.switchVersion}
+            retryingId={chat.retryingId}
             isStreaming={isStreaming}
           />
         )}

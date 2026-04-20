@@ -87,6 +87,7 @@ export interface UseChatReturn {
   streamingToolCalls: StreamToolCall[]
   streamingReasoning: string
   streamingSegments: StreamSegment[]
+  retryingId: string | null
   iteration: number
   send: (message: string) => Promise<void>
   abort: () => void
@@ -106,6 +107,9 @@ export function useChat(options: UseChatOptions): UseChatReturn {
   const [streamingReasoning, setStreamingReasoning] = useState('')
   const [streamingSegments, setStreamingSegments] = useState<StreamSegment[]>([])
   const [iteration, setIteration] = useState(0)
+  // When a retry is in flight, we hide the target assistant from the list
+  // so the streaming bubble appears in its place rather than beneath it.
+  const [retryingId, setRetryingId] = useState<string | null>(null)
 
   const abortRef = useRef<AbortController | null>(null)
   const messagesRef = useRef<Message[]>(messages)
@@ -165,6 +169,8 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     if (!isRetry) {
       const userMsg = createUserMessage(message)
       setMessages((prev) => [...prev, userMsg])
+    } else if (opts.retryTargetId) {
+      setRetryingId(opts.retryTargetId)
     }
     setStatus('streaming')
     setError(undefined)
@@ -324,11 +330,32 @@ export function useChat(options: UseChatOptions): UseChatReturn {
       // would un-render the typing animation mid-word.
       streamEnded = true
 
+      // Flush any undrained content into the active text segment before
+      // snapshotting — otherwise the saved message is truncated at whatever
+      // the typewriter had written so far.
+      if (contentBuffer) {
+        const seg = getCurrentTextSeg()
+        seg.text += contentBuffer
+        displayContent += contentBuffer
+        contentBuffer = ''
+      }
+      if (reasoningBuffer) {
+        displayReasoning += reasoningBuffer
+        reasoningBuffer = ''
+      }
+
       const assistantMsg = buildAssistantMessage(segments)
+      // Build the NEXT messages list synchronously so the subsequent
+      // persist call writes the same thing the UI will render — otherwise
+      // retry's in-place replace and the persist-append can disagree and
+      // corrupt what loads on next session open.
+      let nextMessages: Message[] = messagesRef.current
       if (isRetry && opts.retryTargetId) {
         const targetId = opts.retryTargetId
-        setMessages((prev) => prev.map((m) => {
+        let found = false
+        nextMessages = messagesRef.current.map((m) => {
           if (m.id !== targetId) return m
+          found = true
           const prevVersions = m.versions ?? [m.parts]
           const versions = [...prevVersions, assistantMsg.parts]
           return {
@@ -337,10 +364,15 @@ export function useChat(options: UseChatOptions): UseChatReturn {
             versions,
             version_index: versions.length - 1,
           }
-        }))
+        })
+        // Fallback: if the target is somehow gone from the list, append
+        // so we don't lose the reply entirely.
+        if (!found) nextMessages = [...messagesRef.current, assistantMsg]
       } else {
-        setMessages((prev) => [...prev, assistantMsg])
+        nextMessages = [...messagesRef.current, assistantMsg]
       }
+      setMessages(nextMessages)
+      setRetryingId(null)
       setStatus('idle')
       setStreamingContent('')
       setStreamingToolCalls([])
@@ -349,8 +381,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
 
       // Persist to our SQLite store + refresh sidebar
       if (persistMessages) {
-        const allMessages = [...messagesRef.current, assistantMsg]
-        syncMessagesToStore(sessionId, allMessages).then(() => {
+        syncMessagesToStore(sessionId, nextMessages).then(() => {
           // Refresh the session list so the new session + title appear immediately
           qc.invalidateQueries({ queryKey: ['our', 'chat', 'sessions'] })
         }).catch(() => {})
@@ -358,6 +389,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     } catch (err) {
       streamEnded = true
       window.clearInterval(typerId)
+      setRetryingId(null)
       if (controller.signal.aborted) {
         if (accContent || segments.some((s) => s.kind === 'tool')) {
           const partialMsg = buildAssistantMessage(segments)
@@ -417,25 +449,27 @@ export function useChat(options: UseChatOptions): UseChatReturn {
         if (m.id !== id || m.role !== 'assistant') return m
         // The edit textarea shows all text segments joined; saving used to
         // write newContent into every text part (duplicating it and
-        // scrambling segment/tool order). Now: keep tool parts in place,
-        // collapse all text parts into a single part at the position of
-        // the first existing text part. Messages with no text parts (pure
-        // tools) get one appended at the end.
+        // scrambling segment/tool order). Now: keep tool parts in their
+        // original positions, collapse all text into a single part at the
+        // LAST text position so subsequent tool blocks don't appear to
+        // "move below" the text. Pure-tool messages get the text appended.
+        const lastTextIdx = (() => {
+          for (let i = m.parts.length - 1; i >= 0; i--) {
+            if (m.parts[i].type === 'text') return i
+          }
+          return -1
+        })()
         const newParts: MessagePart[] = []
-        let placedText = false
-        for (const p of m.parts) {
+        m.parts.forEach((p, i) => {
           if (p.type === 'text') {
-            if (!placedText) {
-              newParts.push({ type: 'text', text: newContent })
-              placedText = true
-            }
-            // Drop subsequent text parts — their content was folded into
-            // newContent already via getTextFromParts.
+            if (i === lastTextIdx) newParts.push({ type: 'text', text: newContent })
+            // earlier text parts are dropped; their content was already
+            // merged into newContent via getTextFromParts('\n')
           } else {
             newParts.push(p)
           }
-        }
-        if (!placedText) newParts.push({ type: 'text', text: newContent })
+        })
+        if (lastTextIdx === -1) newParts.push({ type: 'text', text: newContent })
         return { ...m, parts: newParts }
       })
       if (persistMessages) syncMessagesToStore(sessionId, next).catch(() => {})
@@ -491,6 +525,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     streamingToolCalls,
     streamingReasoning,
     streamingSegments,
+    retryingId,
     iteration,
     send,
     abort,

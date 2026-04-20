@@ -155,22 +155,27 @@ interface MessageListProps {
   onRetry?: () => void
   onRetryAssistant?: (assistantId: string) => void
   onSwitchVersion?: (assistantId: string, nextIndex: number) => void
+  retryingId?: string | null
   isStreaming?: boolean
 }
 
 export function MessageList({
   messages, attachmentPreviews, streaming,
   onDeleteMessage, onEditUserMessage, onEditAssistantMessage,
-  onRetry, onRetryAssistant, onSwitchVersion, isStreaming,
+  onRetry, onRetryAssistant, onSwitchVersion, retryingId, isStreaming,
 }: MessageListProps) {
+  // Hide the assistant message currently being retried so the streaming
+  // bubble appears in its slot, not beneath it. It comes back (replaced)
+  // when streaming finalizes.
+  const visible = retryingId ? messages.filter((m) => m.id !== retryingId) : messages
   return (
     <>
-      {messages.map((msg, idx) => {
+      {visible.map((msg, idx) => {
         const prev = idx > 0 ? messages[idx - 1] : null
         const sameRole = prev?.role === msg.role
         const isLast = idx === messages.length - 1
         if (msg.role === 'user') {
-          const nextAssistant = messages[idx + 1]
+          const nextAssistant = visible[idx + 1]
           const canRetry = !!(nextAssistant && nextAssistant.role === 'assistant' && onRetryAssistant)
           return (
             <UserMessage
