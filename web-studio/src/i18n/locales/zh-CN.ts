@@ -16,9 +16,6 @@ const zhCN = {
       fileSystem: {
         title: '文件系统',
       },
-      operations: {
-        title: '运维',
-      },
       resources: {
         title: '资源',
       },
@@ -86,11 +83,6 @@ const zhCN = {
         label: 'User',
         placeholder: 'default',
       },
-    },
-  },
-  operations: {
-    page: {
-      placeholder: '运维面板能力尚未接入。',
     },
   },
   addResource: {

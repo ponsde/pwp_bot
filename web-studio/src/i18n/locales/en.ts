@@ -16,9 +16,6 @@ const en = {
       fileSystem: {
         title: 'File System',
       },
-      operations: {
-        title: 'Operations',
-      },
       resources: {
         title: 'Resources',
       },
@@ -86,11 +83,6 @@ const en = {
         label: 'User',
         placeholder: 'default',
       },
-    },
-  },
-  operations: {
-    page: {
-      placeholder: 'Operations dashboard is under construction.',
     },
   },
   addResource: {

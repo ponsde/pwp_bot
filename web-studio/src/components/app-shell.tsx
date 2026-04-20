@@ -1,7 +1,6 @@
 import * as React from 'react'
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router'
 import {
-  ActivityIcon,
   BlocksIcon,
   ChevronRightIcon,
   FolderTreeIcon,
@@ -104,12 +103,6 @@ const NAV_ITEMS: readonly NavItem[] = [
   },
   // 'sessions' is rendered separately below via <SessionNavGroup/> so the
   // collapsible can list actual chat sessions as submenu children.
-  {
-    icon: ActivityIcon,
-    id: 'operations',
-    titleKey: 'navigation.operations.title',
-    to: '/operations',
-  },
 ] as const
 
 // Stand-in entry for the /sessions route so the header title resolver
@@ -308,7 +301,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
                     )
 
                     // Inject the dynamic Sessions collapsible right after
-                    // 'resources' so it sits between resources and ops.
+                    // 'resources' so it sits at the end of the nav.
                     if (item.id === 'resources') {
                       return (
                         <React.Fragment key={item.id}>

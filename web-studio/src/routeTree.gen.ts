@@ -12,7 +12,6 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as HomeRouteImport } from './routes/home'
 import { Route as SessionsRouteRouteImport } from './routes/sessions/route'
 import { Route as ResourcesRouteRouteImport } from './routes/resources/route'
-import { Route as OperationsRouteRouteImport } from './routes/operations/route'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ResourcesIndexRouteImport } from './routes/resources/index'
 import { Route as ResourcesAddResourceRouteImport } from './routes/resources/add-resource'
@@ -30,11 +29,6 @@ const SessionsRouteRoute = SessionsRouteRouteImport.update({
 const ResourcesRouteRoute = ResourcesRouteRouteImport.update({
   id: '/resources',
   path: '/resources',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const OperationsRouteRoute = OperationsRouteRouteImport.update({
-  id: '/operations',
-  path: '/operations',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -55,7 +49,6 @@ const ResourcesAddResourceRoute = ResourcesAddResourceRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/operations': typeof OperationsRouteRoute
   '/resources': typeof ResourcesRouteRouteWithChildren
   '/sessions': typeof SessionsRouteRoute
   '/home': typeof HomeRoute
@@ -64,7 +57,6 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/operations': typeof OperationsRouteRoute
   '/sessions': typeof SessionsRouteRoute
   '/home': typeof HomeRoute
   '/resources/add-resource': typeof ResourcesAddResourceRoute
@@ -73,7 +65,6 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/operations': typeof OperationsRouteRoute
   '/resources': typeof ResourcesRouteRouteWithChildren
   '/sessions': typeof SessionsRouteRoute
   '/home': typeof HomeRoute
@@ -84,24 +75,16 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/operations'
     | '/resources'
     | '/sessions'
     | '/home'
     | '/resources/add-resource'
     | '/resources/'
   fileRoutesByTo: FileRoutesByTo
-  to:
-    | '/'
-    | '/operations'
-    | '/sessions'
-    | '/home'
-    | '/resources/add-resource'
-    | '/resources'
+  to: '/' | '/sessions' | '/home' | '/resources/add-resource' | '/resources'
   id:
     | '__root__'
     | '/'
-    | '/operations'
     | '/resources'
     | '/sessions'
     | '/home'
@@ -111,7 +94,6 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  OperationsRouteRoute: typeof OperationsRouteRoute
   ResourcesRouteRoute: typeof ResourcesRouteRouteWithChildren
   SessionsRouteRoute: typeof SessionsRouteRoute
   HomeRoute: typeof HomeRoute
@@ -138,13 +120,6 @@ declare module '@tanstack/react-router' {
       path: '/resources'
       fullPath: '/resources'
       preLoaderRoute: typeof ResourcesRouteRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/operations': {
-      id: '/operations'
-      path: '/operations'
-      fullPath: '/operations'
-      preLoaderRoute: typeof OperationsRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -187,7 +162,6 @@ const ResourcesRouteRouteWithChildren = ResourcesRouteRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  OperationsRouteRoute: OperationsRouteRoute,
   ResourcesRouteRoute: ResourcesRouteRouteWithChildren,
   SessionsRouteRoute: SessionsRouteRoute,
   HomeRoute: HomeRoute,
