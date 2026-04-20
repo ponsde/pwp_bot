@@ -321,12 +321,18 @@ class TableExtractor:
                 pending_label = label
                 continue
             converted = self._convert_statement_value(table_type, field, value, source_unit)
-            # Aggregate totals: prefer later occurrence (consolidated > subsidiary)
+            # Aggregate totals: magnitude-guarded overwrite (see _should_overwrite_aggregate).
+            # Prevents garbage (from misclassified auxiliary tables) from clobbering real values.
             aggregate_fields = {
                 "asset_total_assets", "liability_total_liabilities", "equity_total_equity",
-                "total_operating_revenue", "net_profit", "net_cash_flow",
+                "total_operating_revenue", "net_profit", "operating_profit", "total_profit",
+                "net_cash_flow", "operating_cf_net_amount",
+                "investing_cf_net_amount", "financing_cf_net_amount",
             }
-            if field in aggregate_fields or field not in target:
+            if field in aggregate_fields:
+                if _should_overwrite_aggregate(target.get(field), converted):
+                    target[field] = converted
+            elif field not in target:
                 target[field] = converted
 
     def _extract_core_metrics(
