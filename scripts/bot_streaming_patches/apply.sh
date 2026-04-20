@@ -95,11 +95,28 @@ rm -f "$PR13_REWROTE"
 PR23="$(dirname "$0")/02-pr23-aiter-bytes.patch"
 apply_patch "$PR23" 1
 
+# Verify PR13's provider-signature hunks actually landed. `patch -f || true`
+# above will silently accept broken output; check explicitly so Railway builds
+# fail loudly instead of producing a runtime TypeError.
+PROVIDER_OK=1
+for f in \
+    "$SITE/vikingbot/providers/litellm_provider.py" \
+    "$SITE/vikingbot/providers/openai_compatible_provider.py"; do
+    if ! grep -q "on_content_delta: DeltaCallback" "$f"; then
+        echo "  !! $f missing on_content_delta in signature"
+        PROVIDER_OK=0
+    fi
+done
+
 # Finally: loop.py hunk1 from PR13 fails (version drift on get_definitions signature).
 # Apply the behavior manually: inject on_content_delta / on_reasoning_delta hooks
 # around the provider.chat call.
+#
+# If PROVIDER_OK=0, skip the kwargs — calling chat() with unknown kwargs would
+# raise TypeError at runtime. The bot still runs, just without token streaming.
 LOOP="$SITE/vikingbot/agent/loop.py"
-if ! grep -q "on_content_delta=on_content_delta" "$LOOP"; then
+if ! grep -q "on_content_delta=on_content_delta" "$LOOP" \
+   && [ "$PROVIDER_OK" = "1" ]; then
     python3 - <<'PY'
 import os, pathlib
 p = pathlib.Path(os.environ["SITE"]) / "vikingbot" / "agent" / "loop.py"
@@ -147,7 +164,26 @@ if old in src:
 else:
     print(f"[loop.py manual-fix] already patched or layout drifted")
 PY
+elif [ "$PROVIDER_OK" = "0" ]; then
+    # Provider patch didn't stick — strip kwargs from loop.py if a previous
+    # run injected them, so the bot runs (without token streaming).
+    if grep -q "on_content_delta=on_content_delta" "$LOOP"; then
+        echo "  provider patch missing — stripping loop.py kwargs to avoid TypeError"
+        python3 - <<'PY'
+import os, pathlib, re
+p = pathlib.Path(os.environ["SITE"]) / "vikingbot" / "agent" / "loop.py"
+src = p.read_text()
+src = re.sub(r'\n\s*on_content_delta=on_content_delta,', '', src)
+src = re.sub(r'\n\s*on_reasoning_delta=on_reasoning_delta,', '', src)
+p.write_text(src)
+PY
+    fi
 fi
 
 echo ""
-echo "done. restart the bot gateway for changes to take effect."
+if [ "$PROVIDER_OK" = "1" ]; then
+    echo "done. restart the bot gateway for changes to take effect."
+else
+    echo "WARNING: provider patch did not apply; token-level streaming disabled."
+    echo "         bot will still work via non-streaming path."
+fi
