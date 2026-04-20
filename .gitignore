@@ -37,6 +37,7 @@ vikingbot_pkg/
 /data/*
 !/data/db/
 !/data/sample/
+!/data/audit/
 /data/db/*
 !/data/db/finance.db
 !/data/db/.gitkeep

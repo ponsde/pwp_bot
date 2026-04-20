@@ -1,0 +1,13 @@
+=== finance.db audit ===
+coverage: rows=822 companies=72 periods=12
+  row counts: core=822 balance=822 income=822 cash=822
+null_rates (worst per table):
+  core_performance_indicators_sheet        eps=3.8%
+  balance_sheet                            liability_total_liabilities=19.1%
+  income_sheet                             total_profit=40.5%
+  cash_flow_sheet                          net_cash_flow=2.4%
+balance_mismatch     : 250 rows
+cross_inconsistency  : 340 rows
+missing_periods      : 42 cells
+yoy_outliers         : 26 rows
+full report: logs/audit_pre.json
