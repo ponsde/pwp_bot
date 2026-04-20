@@ -32,6 +32,12 @@ PERIOD_MAP = {
     "第三季度报告": "Q3",
 }
 
+# Companies whose PDFs appear in 附件2 but aren't listed in 附件1.
+# Verified against the 摘要 variant's cover page (证券代码 line).
+_FALLBACK_STOCK_CODE: dict[str, str] = {
+    "长药控股": "300391",
+}
+
 HEAD_PAGE_LIMIT = 20
 FULL_SCAN_PAGE_LIMIT = 200
 
@@ -189,6 +195,13 @@ class PDFParser:
         return report_year, f"{report_year}{suffix}", False
 
     @staticmethod
+    def _fallback_stock_code(stock_abbr: str) -> dict[str, str] | None:
+        code = _FALLBACK_STOCK_CODE.get(stock_abbr)
+        if code is None:
+            return None
+        return {"stock_code": code, "stock_abbr": stock_abbr}
+
+    @staticmethod
     def _extract_company_from_pdf(path: Path, stock_abbr: str) -> dict[str, str]:
         code_re = re.compile(r"(?:证券代码|股票代码|公司代码)[：:\s]*(\d{6})")
         with pdfplumber.open(path) as pdf:
@@ -197,6 +210,9 @@ class PDFParser:
                 m = code_re.search(text)
                 if m:
                     return {"stock_code": m.group(1), "stock_abbr": stock_abbr}
+        fallback = PDFParser._fallback_stock_code(stock_abbr)
+        if fallback is not None:
+            return fallback
         raise ValueError(f"Unknown company: {stock_abbr} (not in 附件1, and could not extract stock_code from PDF)")
 
     def _guess_title(self, page_text: str) -> str | None:
