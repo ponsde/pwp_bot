@@ -639,10 +639,15 @@ class TableExtractor:
 
     @staticmethod
     def _candidate_period_headers(period_key: str, year: str = "") -> tuple[str, ...]:
+        # Order matters: the first header cell that matches wins in
+        # _match_header_indices -> _select_core_value. For Q3, the 利润表 /
+        # 主要财务指标 table has BOTH "本报告期" (Q3 alone) and "年初至报告期末"
+        # (YTD, Jan-Sep) columns. The income_sheet statement is extracted YTD,
+        # so core must also prefer YTD to stay consistent. Put YTD first.
         base = {
             "Q1": ("第一季度", "一季度", "本报告期", "本报告期末", "1-3月份"),
             "HY": ("半年度", "上半年", "本报告期", "本报告期末", "1-6月", "1-6月份"),
-            "Q3": ("第三季度", "三季度", "本报告期", "本报告期末", "7-9月份", "9月30日", "年初至报告期末"),
+            "Q3": ("年初至报告期末", "年初至报", "第三季度", "三季度", "本报告期", "本报告期末", "7-9月份", "9月30日"),
             "FY": ("本期", "本报告期", "本期末", "第四季度"),
         }
         candidates = list(base.get(period_key, ()))
@@ -742,15 +747,27 @@ class TableExtractor:
         return self._convert_value(value, meta, source_unit)
 
     def _match_header_indices(self, header: list[str], period_key: str, year: str) -> list[int]:
+        """Return header column indices matching the period, ranked by candidate priority.
+
+        Previously returned matches in header left-to-right order, which caused Q3
+        reports to pick the '本报告期' (single-quarter) column even when a
+        '年初至报告期末' (YTD) column was also present. Now matches are sorted by
+        candidate rank so the highest-priority candidate wins, regardless of
+        header column order.
+        """
         candidates = self._candidate_period_headers(period_key, year)
         excluded_tokens = ("增减", "同比", "变动", "增长")
-        matches: list[int] = []
+        ranked: list[tuple[int, int]] = []  # (candidate_rank, header_idx)
         for idx, title in enumerate(header):
             normalized = self._clean_text(title)
             if not normalized or any(token in normalized for token in excluded_tokens):
                 continue
-            if any(token in normalized for token in candidates):
-                matches.append(idx)
+            for rank, token in enumerate(candidates):
+                if token in normalized:
+                    ranked.append((rank, idx))
+                    break
+        ranked.sort()
+        matches = [idx for _, idx in ranked]
         if not matches and period_key == "FY" and year:
             for idx, title in enumerate(header):
                 normalized = self._clean_text(title)
