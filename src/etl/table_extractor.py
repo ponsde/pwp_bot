@@ -490,8 +490,21 @@ class TableExtractor:
         if core.get("net_asset_per_share") is None and balance.get("equity_total_equity") is not None and share_capital not in (None, 0):
             core["net_asset_per_share"] = round((balance["equity_total_equity"] * 10000) / share_capital, 4)
 
-        if balance.get("asset_total_assets") is not None and balance.get("liability_total_liabilities") is not None and balance.get("equity_total_equity") is None:
-            balance["equity_total_equity"] = round(balance["asset_total_assets"] - balance["liability_total_liabilities"], 2)
+        if balance.get("asset_total_assets") is not None and balance.get("liability_total_liabilities") is not None:
+            derived_equity = round(balance["asset_total_assets"] - balance["liability_total_liabilities"], 2)
+            captured_equity = balance.get("equity_total_equity")
+            if captured_equity is None:
+                balance["equity_total_equity"] = derived_equity
+            else:
+                # Captured 所有者权益合计 sometimes comes from a 母公司 section in
+                # multi-column layouts where 合并 and 母公司 balance sheets are
+                # interleaved (e.g. 恩威医药 2022FY). If the captured value violates
+                # Asset = Liabilities + Equity by more than 0.1% (with a 1 万元 floor),
+                # trust asset/liab and overwrite with the derivation — the accounting
+                # identity must hold in 合并 data.
+                tolerance = max(1.0, abs(derived_equity) * 0.001)
+                if abs(captured_equity - derived_equity) > tolerance:
+                    balance["equity_total_equity"] = derived_equity
 
         if core.get("roe") is None and core.get("net_profit_10k_yuan") is not None and balance.get("equity_total_equity") not in (None, 0):
             core["roe"] = round(core["net_profit_10k_yuan"] / balance["equity_total_equity"] * 100, 4)
