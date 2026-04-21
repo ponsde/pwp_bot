@@ -218,9 +218,15 @@ class PDFParser:
 
         table_header = self._table_first_rows_text(table)
         table_body = self._table_rows_text(table, max_rows=12)
+        # Full-body scan is needed for balance-sheet signature detection because
+        # balance totals (负债合计/所有者权益合计) often appear in rows 20–30, past
+        # the default 12-row window. Row-count cap (300) is loose — no real
+        # financial statement has that many line items.
+        table_body_full = self._table_rows_text(table, max_rows=300)
         full_context = "\n".join(filter(None, [table_header, table.title or "", table.text[:1000], previous_text[-400:]]))
         compact_context = self._compact(full_context)
         compact_body = self._compact(table_body)
+        compact_body_full = self._compact(table_body_full)
         combined_compact = compact_context + compact_body
 
         if any(token in combined_compact for keyword in map(self._compact, INVALID_TABLE_KEYWORDS) for token in (keyword,)):
@@ -251,7 +257,12 @@ class PDFParser:
                 candidates.append("core_performance_indicators_sheet")
         if "合并资产负债表" in compact_context and not any(token in combined_compact for token in map(self._compact, EXCLUDED_STATEMENT_KEYWORDS)):
             candidates.append("balance_sheet")
-        if any(token in compact_body for token in ("负债合计", "所有者权益合计", "股东权益合计", "资产总计", "资产总额")) and not any(token in combined_compact for token in ("营业收入", "利润总额", "经营活动产生的现金流量净额")):
+        # Body-signal balance detection: scan FULL table body (not just first 12 rows)
+        # and exclude against full-body only (not page context). Both changes matter:
+        # (1) 负债合计 lives in row 20+ for compact Q3 formats (e.g. 佐力药业 2024Q3);
+        # (2) page context has 营业收入 when income-sheet head shares the PDF page,
+        #     which would falsely exclude the balance-tail table.
+        if any(token in compact_body_full for token in ("负债合计", "所有者权益合计", "股东权益合计", "资产总计", "资产总额")) and not any(token in compact_body_full for token in ("营业收入", "利润总额", "经营活动产生的现金流量净额")):
             candidates.append("balance_sheet")
         if any(token in compact_context for token in ("合并利润表", "合并年初到报告期末利润表")):
             candidates.append("income_sheet")
