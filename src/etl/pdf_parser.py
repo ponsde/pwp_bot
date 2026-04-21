@@ -421,10 +421,31 @@ class PDFParser:
         return rows
 
     def _has_distinct_confirmation(self, table_type: str, table: ParsedTable) -> bool:
+        """Check whether the table looks like a DIFFERENT statement type from `table_type`.
+
+        Used during cross-page merging: if prev table was classified (e.g. income_sheet)
+        and the current table is unclassified, we propagate prev's type only if the current
+        table doesn't look like a DIFFERENT statement type.
+
+        Subtle: CONFIRM_KEYWORDS for different types share items (e.g. "净利润" is in
+        both income_sheet and core_performance_indicators). A shared keyword in context
+        does NOT mean the table is distinctly the other type — it's compatible with both.
+        Ignore keywords that are ALSO in the current `table_type`'s own confirm list, so
+        only truly type-specific hits trigger distinct-confirmation.
+
+        Without this guard, an income-sheet continuation (白云山 2024Q3 table[4] p11
+        with 利润总额/净利润/所得税费用/持续经营净利润) fails merge because "净利润"
+        hits core_performance_indicators' confirm list.
+        """
         context = self._compact(self._table_first_rows_text(table))
+        own_compact_keywords = {self._compact(k) for k in CONFIRM_KEYWORDS.get(table_type, ())}
         for other_type, keywords in CONFIRM_KEYWORDS.items():
             if other_type == table_type:
                 continue
-            if any(self._compact(keyword) in context for keyword in keywords):
-                return True
+            for keyword in keywords:
+                kc = self._compact(keyword)
+                if kc in own_compact_keywords:
+                    continue  # shared with current type → not distinct
+                if kc in context:
+                    return True
         return False
