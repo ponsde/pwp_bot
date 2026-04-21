@@ -283,6 +283,11 @@ class AgentLoop:
             "completion_tokens": 0,
             "total_tokens": 0,
         }
+        # Escape-hatch for malformed-tool-call loops: if the LLM repeats the
+        # exact same (name, args) tool call 3 times in a row, break out. Seen
+        # with partial-JSON output like {"raw": "{\"path\":..."} that never
+        # produces a valid tool invocation and wastes the iteration budget.
+        recent_tool_signatures: list[str] = []
 
         while iteration < self.max_iterations:
             iteration += 1
@@ -383,10 +388,24 @@ class AgentLoop:
                 results = await asyncio.gather(*tool_tasks)
 
                 # Stage 3: Process results sequentially in original order
+                repeat_abort = False
                 for _idx, tool_call, result, tool_execute_duration in results:
                     args_str = json.dumps(tool_call.arguments, ensure_ascii=False)
                     logger.info(f"[TOOL_CALL]: {tool_call.name}({args_str[:200]})")
                     logger.info(f"[RESULT]: {str(result)[:600]}")
+
+                    signature = f"{tool_call.name}:{args_str[:500]}"
+                    recent_tool_signatures.append(signature)
+                    if len(recent_tool_signatures) > 6:
+                        recent_tool_signatures = recent_tool_signatures[-6:]
+                    if len(recent_tool_signatures) >= 3 and all(
+                        sig == signature for sig in recent_tool_signatures[-3:]
+                    ):
+                        logger.warning(
+                            "[LOOP_GUARD] breaking out — same tool call repeated 3x in a row: %s",
+                            signature[:200],
+                        )
+                        repeat_abort = True
 
                     if publish_events:
                         await self.bus.publish_outbound(
@@ -419,6 +438,14 @@ class AgentLoop:
                         "output_token": cal_str_tokens(result, text_type="mixed"),
                     }
                     tools_used.append(tool_used_dict)
+
+                if repeat_abort:
+                    final_content = (
+                        "Aborted: detected a tool-call loop "
+                        "(the same call repeated 3x without progress). "
+                        "Returning whatever partial result is available."
+                    )
+                    break
 
                 messages.append(
                     {"role": "user", "content": "Reflect on the results and decide next steps."}

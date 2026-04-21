@@ -45,7 +45,7 @@ def _load_questions_xlsx(path: Path) -> list[dict]:
     return out
 
 
-def _chat(gateway: str, api_key: str, session_id: str, message: str, timeout: int = 300) -> dict:
+def _chat(gateway: str, api_key: str, session_id: str, message: str, timeout: int = 900) -> dict:
     resp = requests.post(
         f"{gateway}/bot/v1/chat",
         json={"message": message, "session_id": session_id},
