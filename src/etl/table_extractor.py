@@ -224,6 +224,13 @@ _CONSOLIDATED_ONLY_FIELDS = frozenset({
     "total_operating_revenue",
     "net_cash_flow",
     "operating_cf_net_amount",
+    # net_profit: 附件3 schema says "最终盈利或亏损总额" = 合并净利润. The
+    # alias map has both "净利润" (3 chars, 合并) and "归属于母公司股东的净利润"
+    # (13 chars, 归母) → same field. Specificity guard lets longer label win,
+    # flipping 合并 → 归母 for companies with minority interests (白云山 2024Q3:
+    # 合并 328944.07 vs 归母 315897.70). Adding to consolidated-only requires
+    # ratio >= 1.0 so 归母 never overwrites the earlier-written 合并 value.
+    "net_profit",
 })
 
 
