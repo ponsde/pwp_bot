@@ -22,7 +22,7 @@ def _safe_chart_data(rows: list[dict]) -> tuple[list[dict], str | None]:
 
 def run_etl(input_dir: str, db_path: str) -> dict[str, object]:
     from src.etl.loader import ETLLoader
-    loader = ETLLoader(Path(db_path))
+    loader = ETLLoader(Path(db_path), pdf_dir=Path(input_dir))
     pdf_paths = sorted(Path(input_dir).rglob("*.pdf"))
     results = []
     for pdf_path in pdf_paths:

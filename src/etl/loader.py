@@ -4,8 +4,14 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
+from config import REPORTS_DIR
 from src.etl.pdf_parser import PDFParser
-from src.etl.schema import create_tables, validate_schema
+from src.etl.schema import (
+    build_dynamic_company_mapping,
+    create_tables,
+    load_official_stock_codes,
+    validate_schema,
+)
 from src.etl.table_extractor import TableExtractor
 from src.etl.validator import DataValidator
 
@@ -14,18 +20,35 @@ _PERIOD_ORDER = {"Q1": 1, "HY": 2, "Q3": 3, "FY": 4}
 
 
 class ETLLoader:
-    def __init__(self, db_path: Path) -> None:
+    def __init__(self, db_path: Path, pdf_dir: Path | None = None) -> None:
         self.db_path = db_path
         self.schema = create_tables(db_path)
         validate_schema(db_path, self.schema)
-        self.parser = PDFParser()
+        if pdf_dir is not None:
+            company_mapping, self.allowlist = build_dynamic_company_mapping(pdf_dir)
+        else:
+            # No pdf_dir supplied: fall back to 附件1 only.
+            company_mapping = None
+            self.allowlist = load_official_stock_codes()
+        self.parser = PDFParser(company_mapping=company_mapping)
         self.extractor = TableExtractor()
         self.validator = DataValidator()
 
     def load_pdf(self, pdf_path: str | Path) -> dict[str, Any]:
-        parsed = self.parser.parse(pdf_path)
+        try:
+            parsed = self.parser.parse(pdf_path)
+        except ValueError as exc:
+            # Parser couldn't determine company (e.g., no 证券代码 found in PDF
+            # and not in 附件1). Treat as a clean skip rather than a hard error.
+            return {"status": "skipped", "reason": f"unknown_company: {exc}", "file": str(pdf_path)}
         if parsed.is_summary:
             return {"status": "skipped", "reason": "summary_report", "file": str(pdf_path)}
+        if parsed.stock_code not in self.allowlist:
+            return {
+                "status": "skipped",
+                "reason": f"not_in_allowlist: {parsed.stock_code} {parsed.stock_abbr}",
+                "file": str(pdf_path),
+            }
         records, extract_warnings = self.extractor.extract(parsed)
         validation = self.validator.validate(records)
         if not validation.ok:

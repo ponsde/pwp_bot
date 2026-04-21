@@ -125,3 +125,70 @@ def load_company_mapping(company_path: Path = COMPANY_XLSX) -> dict[str, dict[st
         mapping[stock_code] = {"stock_code": stock_code, "stock_abbr": stock_abbr}
         mapping[stock_abbr] = {"stock_code": stock_code, "stock_abbr": stock_abbr}
     return mapping
+
+
+def load_official_stock_codes(company_path: Path = COMPANY_XLSX) -> set[str]:
+    """Return the set of 6-digit stock codes listed in 附件1 (官方赛事公司清单).
+
+    Used as the seed of the ETL allowlist; the loader extends this by scanning
+    附件2 摘要 PDFs so that companies with real reports but absent from 附件1
+    (e.g. 香雪制药, 长药控股) are still accepted while references to unrelated
+    companies (平安银行 / 贵州茅台 inside some report body) are rejected.
+    """
+    df = pd.read_excel(company_path, sheet_name="基本信息表")
+    return {str(row["股票代码"]).strip().zfill(6) for _, row in df.iterrows()}
+
+
+def build_dynamic_company_mapping(
+    pdf_dir: Path,
+    company_path: Path = COMPANY_XLSX,
+) -> tuple[dict[str, dict[str, str]], set[str]]:
+    """Augment 附件1 mapping with companies discovered by scanning 附件2.
+
+    Two discovery rules:
+      1. SSE filename `\\d{6}_\\d{8}_[A-Z0-9]+\\.pdf` — the 6-digit prefix IS
+         the stock_code. No PDF read required.
+      2. SZSE filename `abbr：YYYY年...摘要.pdf` where abbr not already in 附件1 —
+         open the 摘要 PDF and scan the first page for 证券代码: \\d{6}. The 摘要
+         cover page reliably carries this, even when the full report doesn't.
+
+    Returns (mapping, allowlist) where:
+      - mapping has both `{stock_code: {…}}` and `{stock_abbr: {…}}` keys.
+      - allowlist is the set of all 6-digit stock codes known to the ETL.
+    """
+    import pdfplumber
+
+    mapping: dict[str, dict[str, str]] = dict(load_company_mapping(company_path))
+    allowlist: set[str] = load_official_stock_codes(company_path)
+
+    sse_re = re.compile(r"^(\d{6})_\d{8}_[A-Z0-9]+\.pdf$")
+    szse_summary_re = re.compile(r"^([^：:]+)[：:]20\d{2}年.*?摘要")
+    code_re = re.compile(r"(?:证券代码|股票代码|公司代码)[：:\s]*(\d{6})")
+
+    for pdf in sorted(Path(pdf_dir).rglob("*.pdf")):
+        m_sse = sse_re.match(pdf.name)
+        if m_sse:
+            code = m_sse.group(1).zfill(6)
+            allowlist.add(code)
+            continue
+        m_szse = szse_summary_re.match(pdf.name)
+        if not m_szse:
+            continue
+        abbr = m_szse.group(1).strip()
+        if abbr in mapping:
+            continue
+        try:
+            with pdfplumber.open(pdf) as doc:
+                if not doc.pages:
+                    continue
+                text = doc.pages[0].extract_text() or ""
+        except Exception:
+            continue
+        cm = code_re.search(text)
+        if not cm:
+            continue
+        code = cm.group(1).zfill(6)
+        mapping[abbr] = {"stock_code": code, "stock_abbr": abbr}
+        mapping.setdefault(code, {"stock_code": code, "stock_abbr": abbr})
+        allowlist.add(code)
+    return mapping, allowlist

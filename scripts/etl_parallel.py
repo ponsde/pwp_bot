@@ -62,8 +62,8 @@ def _shard_pdfs(input_dir: Path, num_shards: int) -> dict[int, list[Path]]:
     return shards
 
 
-def _worker(worker_id: int, db_path: str, pdf_paths: list[str], log_path: str) -> dict:
-    loader = ETLLoader(Path(db_path))
+def _worker(worker_id: int, db_path: str, pdf_paths: list[str], log_path: str, pdf_dir: str) -> dict:
+    loader = ETLLoader(Path(db_path), pdf_dir=Path(pdf_dir))
     stats = {"loaded": 0, "skipped": 0, "rejected": 0, "error": 0}
     with open(log_path, "w", encoding="utf-8") as logf:
         for i, pdf_str in enumerate(pdf_paths, 1):
@@ -139,7 +139,7 @@ def main() -> None:
 
     t0 = time.time()
     tasks = [
-        (i, str(shard_db_paths[i]), [str(p) for p in shards[i]], str(log_dir / f"etl_shard_{i}.log"))
+        (i, str(shard_db_paths[i]), [str(p) for p in shards[i]], str(log_dir / f"etl_shard_{i}.log"), str(input_dir))
         for i in range(args.workers)
     ]
     with mp.get_context("spawn").Pool(processes=args.workers) as pool:
