@@ -317,6 +317,10 @@ def main() -> None:
     parser.add_argument("--api-key", default=DEFAULT_API_KEY)
     parser.add_argument("--result-dir", default="result", help="Where chart images live")
     parser.add_argument("--limit", type=int, default=0, help="Process only first N questions (debug)")
+    parser.add_argument("--concurrency", type=int, default=1,
+                        help="Dispatch N questions concurrently (each is an independent session). "
+                             "4-8 is typically the sweet spot: gateway is async, LLM backend supports "
+                             "concurrency up to its own cap, SQLite reads and MCP calls are safe in parallel.")
     args = parser.parse_args()
 
     questions_path = Path(args.questions)
@@ -337,22 +341,40 @@ def main() -> None:
         items = items[: args.limit]
     print(f"[plan] processing {len(items)} question sets via {args.gateway}")
 
-    results: list[dict] = []
-    t_start = time.time()
-    for i, item in enumerate(items, 1):
+    def _run_one(item: dict) -> dict:
         try:
-            r = _bot_run_question(args.gateway, args.api_key, item, result_dir, args.task)
+            return _bot_run_question(args.gateway, args.api_key, item, result_dir, args.task)
         except Exception as exc:
-            print(f"[{item['id']}] FATAL: {type(exc).__name__}: {str(exc)[:200]}")
-            r = {
+            print(f"[{item['id']}] FATAL: {type(exc).__name__}: {str(exc)[:200]}", flush=True)
+            return {
                 "id": item["id"],
                 "turns_input": item["turns"],
                 "answer_payloads": [{"Q": t["Q"], "A": {"content": f"处理失败：{type(exc).__name__}", "image": [], **({"references": []} if args.task == "research" else {})}} for t in item["turns"]],
                 "sql_joined": "",
                 "chart_type": "无",
             }
-        results.append(r)
-        print(f"[{i}/{len(items)}] {item['id']} done", flush=True)
+
+    results: list[dict] = []
+    t_start = time.time()
+    if args.concurrency <= 1:
+        for i, item in enumerate(items, 1):
+            results.append(_run_one(item))
+            print(f"[{i}/{len(items)}] {item['id']} done", flush=True)
+    else:
+        # Concurrent dispatch. Each question is an independent session — safe in parallel.
+        # Preserve output order by sorting on the input items' index at the end.
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        id_to_index = {item["id"]: idx for idx, item in enumerate(items)}
+        done_count = 0
+        result_buf: dict[str, dict] = {}
+        with ThreadPoolExecutor(max_workers=args.concurrency) as pool:
+            futures = {pool.submit(_run_one, item): item for item in items}
+            for fut in as_completed(futures):
+                item = futures[fut]
+                result_buf[item["id"]] = fut.result()
+                done_count += 1
+                print(f"[{done_count}/{len(items)}] {item['id']} done ({args.concurrency}x)", flush=True)
+        results = [result_buf[item["id"]] for item in items]
 
     elapsed = time.time() - t_start
     if args.task == "answer":
