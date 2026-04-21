@@ -203,7 +203,21 @@ BRACKET_NOTE_RE = re.compile(r"[（(][^）)]*[)）]")
 # "四、利润总额（亏损总额以"－"号" off before the closing ）.
 # Without this strip, the unclosed "（..." stays on the label and prevents alias match.
 UNCLOSED_TAIL_BRACKET_RE = re.compile(r"[（(][^）)]*$")
-UNIT_RE = re.compile(r"单位[：:]\s*(?:人民币)?(元|万元|千元|百万元)")
+# Matches unit hints in two common PDF formats:
+# (a) "单位：万元" or "单位：人民币千元" — standalone unit declaration
+# (b) "营业收入(人民币千元)" / "营业收入（人民币千元）" — inline unit in column label.
+#     白云山 / 康弘药业 and other SSE annual-report core-indicator tables use
+#     this form; without the inline variant, source_unit falls back to 元 and the
+#     千元 values get divided by 10000 instead of 10, producing 1000x-shrunk rows.
+UNIT_RE = re.compile(r"(?:单位[：:]\s*(?:人民币)?|[（(](?:人民币)?)(元|万元|千元|百万元)")
+
+# Per-share metrics are always expressed in 元 in PDFs; table-level '千元/万元'
+# declarations do not apply to them. Used by _convert_value to skip scale-up.
+_PER_SHARE_FIELDS = frozenset({
+    "eps",
+    "net_asset_per_share",
+    "operating_cf_per_share",
+})
 NUMERIC_RE = re.compile(r"-?\d+(?:,\d{3})*(?:\.\d+)?%?")
 
 
@@ -758,6 +772,15 @@ class TableExtractor:
                 return round(numeric * 100, 2)
             return round(numeric, 2)
         if meta.unit == "元":
+            # Per-share fields (eps, net_asset_per_share, operating_cf_per_share)
+            # are always in 元 regardless of the table-level unit declaration;
+            # a table header '(人民币千元)' applies to monetary totals in the
+            # same table, not to per-share metrics. Without this guard, EPS
+            # 1.943 gets scaled to 1943 when source_unit=千元.
+            # Non-per-share monetary fields with meta.unit=元 (e.g. share_capital)
+            # still follow the normal scale-up rules below.
+            if meta.name in _PER_SHARE_FIELDS:
+                return round(numeric, 4)
             if source_unit == "万元":
                 return round(numeric * 10000, 2)
             if source_unit == "千元":
