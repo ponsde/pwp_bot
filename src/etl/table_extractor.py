@@ -334,6 +334,13 @@ class TableExtractor:
             if header:
                 current_col_idx, previous_col_idx = self._match_statement_header_indices(header)
         pending_label = ""
+        # iter 4: same (field, label) repeating within ONE extracted table is a
+        # strong signal that pdfplumber merged 合并 and 母公司 sections into a single
+        # table (粤万年青 2024FY cash flow: both 合并 op_cf 3,208,543.56 and 母公司
+        # op_cf 3,777,956.34 appear as separate rows with identical label). For
+        # consolidated-only fields, trust the first write (assumed 合并, which PDFs
+        # render before 母公司) and skip duplicates unless the first write is garbage.
+        per_table_written: set[tuple[str, str]] = set()
         for row_idx, row in enumerate(rows):
             if header_row_idx is not None and row_idx <= header_row_idx:
                 continue
@@ -364,6 +371,13 @@ class TableExtractor:
                         label, field = strict, strict_field
             if not field:
                 continue
+            # iter 4: skip same-label repeats for consolidated-only fields unless the
+            # existing value is garbage (< 100 万 floor). Allows garbage escape while
+            # rejecting legitimate 母公司 values that follow 合并 in a merged table.
+            if field in _CONSOLIDATED_ONLY_FIELDS and (field, label) in per_table_written:
+                existing = target.get(field)
+                if existing is not None and abs(existing) >= _AGGREGATE_MAGNITUDE_FLOOR:
+                    continue
             value = self._select_statement_value(row, current_col_idx, previous_col_idx)
             if value is None:
                 pending_label = label
@@ -386,9 +400,11 @@ class TableExtractor:
                 if _should_overwrite_aggregate(target.get(field), converted, field=field):
                     target[field] = converted
                     label_specificity[field] = new_spec
+                    per_table_written.add((field, label))
             elif field not in target:
                 target[field] = converted
                 label_specificity[field] = new_spec
+                per_table_written.add((field, label))
 
     def _extract_core_metrics(
         self,
