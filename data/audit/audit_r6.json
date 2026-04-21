@@ -1,0 +1,2986 @@
+{
+  "coverage": {
+    "core_performance_indicators_sheet": {
+      "rows": 823,
+      "companies": 70,
+      "periods": 13
+    },
+    "balance_sheet": {
+      "rows": 823,
+      "companies": 70,
+      "periods": 13
+    },
+    "income_sheet": {
+      "rows": 823,
+      "companies": 70,
+      "periods": 13
+    },
+    "cash_flow_sheet": {
+      "rows": 823,
+      "companies": 70,
+      "periods": 13
+    }
+  },
+  "null_rates": {
+    "core_performance_indicators_sheet": {
+      "total_operating_revenue": 0.0061,
+      "net_profit_10k_yuan": 0.0061,
+      "roe": 0.0158,
+      "eps": 0.0365,
+      "net_asset_per_share": 0.0134
+    },
+    "balance_sheet": {
+      "asset_total_assets": 0.0097,
+      "liability_total_liabilities": 0.1896,
+      "equity_total_equity": 0.1896,
+      "asset_cash_and_cash_equivalents": 0.0328
+    },
+    "income_sheet": {
+      "total_operating_revenue": 0.0085,
+      "operating_profit": 0.0109,
+      "total_profit": 0.0401,
+      "net_profit": 0.0097
+    },
+    "cash_flow_sheet": {
+      "net_cash_flow": 0.0231,
+      "operating_cf_net_amount": 0.017,
+      "investing_cf_net_amount": 0.0219,
+      "financing_cf_net_amount": 0.0207
+    }
+  },
+  "balance_equation": [
+    {
+      "stock_code": "000538",
+      "stock_abbr": "云南白药",
+      "report_period": "2024Q1",
+      "assets": 5687435.11,
+      "liab_plus_equity": 5378429.32,
+      "diff": 309005.79,
+      "rel_error": 0.0543
+    },
+    {
+      "stock_code": "600572",
+      "stock_abbr": "康恩贝",
+      "report_period": "2022FY",
+      "assets": 1538783.26,
+      "liab_plus_equity": 1092996.49,
+      "diff": 445786.77,
+      "rel_error": 0.2897
+    },
+    {
+      "stock_code": "600572",
+      "stock_abbr": "康恩贝",
+      "report_period": "2023HY",
+      "assets": 1705785.74,
+      "liab_plus_equity": 1085344.12,
+      "diff": 620441.62,
+      "rel_error": 0.3637
+    },
+    {
+      "stock_code": "600572",
+      "stock_abbr": "康恩贝",
+      "report_period": "2023FY",
+      "assets": 1544728.86,
+      "liab_plus_equity": 1123824.15,
+      "diff": 420904.71,
+      "rel_error": 0.2725
+    },
+    {
+      "stock_code": "600572",
+      "stock_abbr": "康恩贝",
+      "report_period": "2024HY",
+      "assets": 1510106.19,
+      "liab_plus_equity": 1025445.8300000001,
+      "diff": 484660.36,
+      "rel_error": 0.3209
+    },
+    {
+      "stock_code": "600572",
+      "stock_abbr": "康恩贝",
+      "report_period": "2024Q3",
+      "assets": 974919.76,
+      "liab_plus_equity": 748211.27,
+      "diff": 226708.49,
+      "rel_error": 0.2325
+    },
+    {
+      "stock_code": "600572",
+      "stock_abbr": "康恩贝",
+      "report_period": "2024FY",
+      "assets": 1445704.22,
+      "liab_plus_equity": 990177.6499999999,
+      "diff": 455526.57,
+      "rel_error": 0.3151
+    },
+    {
+      "stock_code": "600572",
+      "stock_abbr": "康恩贝",
+      "report_period": "2025HY",
+      "assets": 981473.46,
+      "liab_plus_equity": 833377.74,
+      "diff": 148095.72,
+      "rel_error": 0.1509
+    },
+    {
+      "stock_code": "603139",
+      "stock_abbr": "康惠制药",
+      "report_period": "2025HY",
+      "assets": 201334.43,
+      "liab_plus_equity": 188149.3,
+      "diff": 13185.13,
+      "rel_error": 0.0655
+    },
+    {
+      "stock_code": "000650",
+      "stock_abbr": "仁和药业",
+      "report_period": "2022FY",
+      "assets": 763164.39,
+      "liab_plus_equity": 857456.27,
+      "diff": -94291.88,
+      "rel_error": 0.11
+    },
+    {
+      "stock_code": "000650",
+      "stock_abbr": "仁和药业",
+      "report_period": "2023FY",
+      "assets": 744468.14,
+      "liab_plus_equity": 830880.36,
+      "diff": -86412.22,
+      "rel_error": 0.104
+    },
+    {
+      "stock_code": "000650",
+      "stock_abbr": "仁和药业",
+      "report_period": "2024HY",
+      "assets": 803978.97,
+      "liab_plus_equity": 945831.04,
+      "diff": -141852.07,
+      "rel_error": 0.15
+    },
+    {
+      "stock_code": "002198",
+      "stock_abbr": "嘉应制药",
+      "report_period": "2024Q3",
+      "assets": 79601.3,
+      "liab_plus_equity": 81851.51000000001,
+      "diff": -2250.21,
+      "rel_error": 0.0275
+    },
+    {
+      "stock_code": "002728",
+      "stock_abbr": "特一药业",
+      "report_period": "2023HY",
+      "assets": 219777.52,
+      "liab_plus_equity": 216004.38,
+      "diff": 3773.14,
+      "rel_error": 0.0172
+    },
+    {
+      "stock_code": "002728",
+      "stock_abbr": "特一药业",
+      "report_period": "2024FY",
+      "assets": 248729.15,
+      "liab_plus_equity": 240087.58000000002,
+      "diff": 8641.57,
+      "rel_error": 0.0347
+    },
+    {
+      "stock_code": "000766",
+      "stock_abbr": "通化金马",
+      "report_period": "2022FY",
+      "assets": 589420.18,
+      "liab_plus_equity": 468511.49,
+      "diff": 120908.69,
+      "rel_error": 0.2051
+    },
+    {
+      "stock_code": "000766",
+      "stock_abbr": "通化金马",
+      "report_period": "2023HY",
+      "assets": 578210.77,
+      "liab_plus_equity": 453413.9,
+      "diff": 124796.87,
+      "rel_error": 0.2158
+    },
+    {
+      "stock_code": "000766",
+      "stock_abbr": "通化金马",
+      "report_period": "2023FY",
+      "assets": 585547.65,
+      "liab_plus_equity": 451924.44,
+      "diff": 133623.21,
+      "rel_error": 0.2282
+    },
+    {
+      "stock_code": "000766",
+      "stock_abbr": "通化金马",
+      "report_period": "2024HY",
+      "assets": 594433.06,
+      "liab_plus_equity": 633955.03,
+      "diff": -39521.97,
+      "rel_error": 0.0623
+    },
+    {
+      "stock_code": "000766",
+      "stock_abbr": "通化金马",
+      "report_period": "2024FY",
+      "assets": 579023.78,
+      "liab_plus_equity": 448361.86,
+      "diff": 130661.92,
+      "rel_error": 0.2257
+    },
+    {
+      "stock_code": "000766",
+      "stock_abbr": "通化金马",
+      "report_period": "2025HY",
+      "assets": 584505.38,
+      "liab_plus_equity": 620818.26,
+      "diff": -36312.88,
+      "rel_error": 0.0585
+    },
+    {
+      "stock_code": "600557",
+      "stock_abbr": "康缘药业",
+      "report_period": "2024FY",
+      "assets": 690676.24,
+      "liab_plus_equity": 711548.01,
+      "diff": -20871.77,
+      "rel_error": 0.0293
+    },
+    {
+      "stock_code": "600557",
+      "stock_abbr": "康缘药业",
+      "report_period": "2025HY",
+      "assets": 683338.66,
+      "liab_plus_equity": 705927.6,
+      "diff": -22588.94,
+      "rel_error": 0.032
+    },
+    {
+      "stock_code": "600993",
+      "stock_abbr": "马应龙",
+      "report_period": "2023Q1",
+      "assets": 505761.56,
+      "liab_plus_equity": 519612.07,
+      "diff": -13850.51,
+      "rel_error": 0.0267
+    },
+    {
+      "stock_code": "000423",
+      "stock_abbr": "东阿阿胶",
+      "report_period": "2022FY",
+      "assets": 1307811.31,
+      "liab_plus_equity": 1274848.3800000001,
+      "diff": 32962.93,
+      "rel_error": 0.0252
+    },
+    {
+      "stock_code": "000423",
+      "stock_abbr": "东阿阿胶",
+      "report_period": "2023HY",
+      "assets": 1310212.62,
+      "liab_plus_equity": 1286634.99,
+      "diff": 23577.63,
+      "rel_error": 0.018
+    },
+    {
+      "stock_code": "000423",
+      "stock_abbr": "东阿阿胶",
+      "report_period": "2023FY",
+      "assets": 1385457.87,
+      "liab_plus_equity": 1365077.51,
+      "diff": 20380.36,
+      "rel_error": 0.0147
+    },
+    {
+      "stock_code": "000423",
+      "stock_abbr": "东阿阿胶",
+      "report_period": "2024FY",
+      "assets": 1383226.33,
+      "liab_plus_equity": 1308713.67,
+      "diff": 74512.66,
+      "rel_error": 0.0539
+    },
+    {
+      "stock_code": "002737",
+      "stock_abbr": "葵花药业",
+      "report_period": "2024FY",
+      "assets": 582587.6,
+      "liab_plus_equity": 624056.3200000001,
+      "diff": -41468.72,
+      "rel_error": 0.0665
+    },
+    {
+      "stock_code": "002737",
+      "stock_abbr": "葵花药业",
+      "report_period": "2025HY",
+      "assets": 571901.61,
+      "liab_plus_equity": 620832.9299999999,
+      "diff": -48931.32,
+      "rel_error": 0.0788
+    },
+    {
+      "stock_code": "300158",
+      "stock_abbr": "振东制药",
+      "report_period": "2023FY",
+      "assets": 618049.7,
+      "liab_plus_equity": 649678.29,
+      "diff": -31628.59,
+      "rel_error": 0.0487
+    },
+    {
+      "stock_code": "300158",
+      "stock_abbr": "振东制药",
+      "report_period": "2024HY",
+      "assets": 604245.44,
+      "liab_plus_equity": 625523.9400000001,
+      "diff": -21278.5,
+      "rel_error": 0.034
+    },
+    {
+      "stock_code": "300158",
+      "stock_abbr": "振东制药",
+      "report_period": "2024FY",
+      "assets": 577464.15,
+      "liab_plus_equity": 498272.45999999996,
+      "diff": 79191.69,
+      "rel_error": 0.1371
+    },
+    {
+      "stock_code": "300158",
+      "stock_abbr": "振东制药",
+      "report_period": "2025HY",
+      "assets": 536802.35,
+      "liab_plus_equity": 579626.68,
+      "diff": -42824.33,
+      "rel_error": 0.0739
+    },
+    {
+      "stock_code": "002349",
+      "stock_abbr": "精华制药",
+      "report_period": "2024HY",
+      "assets": 318500.21,
+      "liab_plus_equity": 328793.94,
+      "diff": -10293.73,
+      "rel_error": 0.0313
+    },
+    {
+      "stock_code": "002349",
+      "stock_abbr": "精华制药",
+      "report_period": "2025HY",
+      "assets": 342458.41,
+      "liab_plus_equity": 353334.63,
+      "diff": -10876.22,
+      "rel_error": 0.0308
+    },
+    {
+      "stock_code": "000989",
+      "stock_abbr": "九 芝 堂",
+      "report_period": "2023FY",
+      "assets": 1415728.32,
+      "liab_plus_equity": 532979.9,
+      "diff": 882748.42,
+      "rel_error": 0.6235
+    },
+    {
+      "stock_code": "600518",
+      "stock_abbr": "康美药业",
+      "report_period": "2022FY",
+      "assets": 1743067.69,
+      "liab_plus_equity": 1511175.92,
+      "diff": 231891.77,
+      "rel_error": 0.133
+    },
+    {
+      "stock_code": "600518",
+      "stock_abbr": "康美药业",
+      "report_period": "2023Q1",
+      "assets": 1743067.69,
+      "liab_plus_equity": 2010078.27,
+      "diff": -267010.58,
+      "rel_error": 0.1328
+    },
+    {
+      "stock_code": "600518",
+      "stock_abbr": "康美药业",
+      "report_period": "2023HY",
+      "assets": 1704134.88,
+      "liab_plus_equity": 1458734.97,
+      "diff": 245399.91,
+      "rel_error": 0.144
+    },
+    {
+      "stock_code": "600518",
+      "stock_abbr": "康美药业",
+      "report_period": "2023Q3",
+      "assets": 1743067.69,
+      "liab_plus_equity": 2010078.27,
+      "diff": -267010.58,
+      "rel_error": 0.1328
+    },
+    {
+      "stock_code": "600518",
+      "stock_abbr": "康美药业",
+      "report_period": "2023FY",
+      "assets": 1704516.51,
+      "liab_plus_equity": 1428037.8900000001,
+      "diff": 276478.62,
+      "rel_error": 0.1622
+    },
+    {
+      "stock_code": "600518",
+      "stock_abbr": "康美药业",
+      "report_period": "2024Q1",
+      "assets": 1420520.68,
+      "liab_plus_equity": 1892559.92,
+      "diff": -472039.24,
+      "rel_error": 0.2494
+    },
+    {
+      "stock_code": "600518",
+      "stock_abbr": "康美药业",
+      "report_period": "2024HY",
+      "assets": 1714106.55,
+      "liab_plus_equity": 1425700.45,
+      "diff": 288406.1,
+      "rel_error": 0.1683
+    },
+    {
+      "stock_code": "600518",
+      "stock_abbr": "康美药业",
+      "report_period": "2024Q3",
+      "assets": 1419360.66,
+      "liab_plus_equity": 1889144.2000000002,
+      "diff": -469783.54,
+      "rel_error": 0.2487
+    },
+    {
+      "stock_code": "600518",
+      "stock_abbr": "康美药业",
+      "report_period": "2024FY",
+      "assets": 1692731.76,
+      "liab_plus_equity": 1379769.03,
+      "diff": 312962.73,
+      "rel_error": 0.1849
+    },
+    {
+      "stock_code": "600518",
+      "stock_abbr": "康美药业",
+      "report_period": "2025Q1",
+      "assets": 1371383.97,
+      "liab_plus_equity": 1850070.1,
+      "diff": -478686.13,
+      "rel_error": 0.2587
+    },
+    {
+      "stock_code": "600518",
+      "stock_abbr": "康美药业",
+      "report_period": "2025HY",
+      "assets": 1705201.25,
+      "liab_plus_equity": 1364473.88,
+      "diff": 340727.37,
+      "rel_error": 0.1998
+    },
+    {
+      "stock_code": "600771",
+      "stock_abbr": "广誉远",
+      "report_period": "2022FY",
+      "assets": 271969.47,
+      "liab_plus_equity": 371114.12,
+      "diff": -99144.65,
+      "rel_error": 0.2672
+    },
+    {
+      "stock_code": "600771",
+      "stock_abbr": "广誉远",
+      "report_period": "2023HY",
+      "assets": 288949.43,
+      "liab_plus_equity": 366117.94999999995,
+      "diff": -77168.52,
+      "rel_error": 0.2108
+    },
+    {
+      "stock_code": "600771",
+      "stock_abbr": "广誉远",
+      "report_period": "2023FY",
+      "assets": 270502.7,
+      "liab_plus_equity": 381375.0,
+      "diff": -110872.3,
+      "rel_error": 0.2907
+    },
+    {
+      "stock_code": "600771",
+      "stock_abbr": "广誉远",
+      "report_period": "2024HY",
+      "assets": 289863.91,
+      "liab_plus_equity": 348157.18,
+      "diff": -58293.27,
+      "rel_error": 0.1674
+    },
+    {
+      "stock_code": "600771",
+      "stock_abbr": "广誉远",
+      "report_period": "2024FY",
+      "assets": 271004.25,
+      "liab_plus_equity": 334787.74,
+      "diff": -63783.49,
+      "rel_error": 0.1905
+    },
+    {
+      "stock_code": "600771",
+      "stock_abbr": "广誉远",
+      "report_period": "2025HY",
+      "assets": 280567.51,
+      "liab_plus_equity": 346865.13,
+      "diff": -66297.62,
+      "rel_error": 0.1911
+    },
+    {
+      "stock_code": "603998",
+      "stock_abbr": "方盛制药",
+      "report_period": "2023HY",
+      "assets": 327810.12,
+      "liab_plus_equity": 304122.19,
+      "diff": 23687.93,
+      "rel_error": 0.0723
+    },
+    {
+      "stock_code": "603998",
+      "stock_abbr": "方盛制药",
+      "report_period": "2024HY",
+      "assets": 373282.61,
+      "liab_plus_equity": 322709.76,
+      "diff": 50572.85,
+      "rel_error": 0.1355
+    },
+    {
+      "stock_code": "603998",
+      "stock_abbr": "方盛制药",
+      "report_period": "2024FY",
+      "assets": 373825.0,
+      "liab_plus_equity": 326657.35,
+      "diff": 47167.65,
+      "rel_error": 0.1262
+    },
+    {
+      "stock_code": "603998",
+      "stock_abbr": "方盛制药",
+      "report_period": "2025HY",
+      "assets": 363635.02,
+      "liab_plus_equity": 309371.58999999997,
+      "diff": 54263.43,
+      "rel_error": 0.1492
+    },
+    {
+      "stock_code": "000999",
+      "stock_abbr": "华润三九",
+      "report_period": "2024FY",
+      "assets": 4008197.23,
+      "liab_plus_equity": 3908753.29,
+      "diff": 99443.94,
+      "rel_error": 0.0248
+    },
+    {
+      "stock_code": "002873",
+      "stock_abbr": "新天药业",
+      "report_period": "2023HY",
+      "assets": 203586.31,
+      "liab_plus_equity": 198608.69,
+      "diff": 4977.62,
+      "rel_error": 0.0244
+    },
+    {
+      "stock_code": "002873",
+      "stock_abbr": "新天药业",
+      "report_period": "2024HY",
+      "assets": 189996.43,
+      "liab_plus_equity": 192607.03999999998,
+      "diff": -2610.61,
+      "rel_error": 0.0136
+    },
+    {
+      "stock_code": "300026",
+      "stock_abbr": "红日药业",
+      "report_period": "2023HY",
+      "assets": 1263085.67,
+      "liab_plus_equity": 1288849.65,
+      "diff": -25763.98,
+      "rel_error": 0.02
+    },
+    {
+      "stock_code": "300026",
+      "stock_abbr": "红日药业",
+      "report_period": "2023FY",
+      "assets": 1263085.67,
+      "liab_plus_equity": 1303553.47,
+      "diff": -40467.8,
+      "rel_error": 0.031
+    },
+    {
+      "stock_code": "300026",
+      "stock_abbr": "红日药业",
+      "report_period": "2025HY",
+      "assets": 1090040.7,
+      "liab_plus_equity": 1132974.51,
+      "diff": -42933.81,
+      "rel_error": 0.0379
+    },
+    {
+      "stock_code": "300147",
+      "stock_abbr": "香雪制药",
+      "report_period": "2024HY",
+      "assets": 811626.83,
+      "liab_plus_equity": 858574.66,
+      "diff": -46947.83,
+      "rel_error": 0.0547
+    },
+    {
+      "stock_code": "600285",
+      "stock_abbr": "羚锐制药",
+      "report_period": "2022FY",
+      "assets": 440229.61,
+      "liab_plus_equity": 434438.26,
+      "diff": 5791.35,
+      "rel_error": 0.0132
+    },
+    {
+      "stock_code": "600285",
+      "stock_abbr": "羚锐制药",
+      "report_period": "2023HY",
+      "assets": 436241.81,
+      "liab_plus_equity": 447934.55000000005,
+      "diff": -11692.74,
+      "rel_error": 0.0261
+    },
+    {
+      "stock_code": "600535",
+      "stock_abbr": "天士力",
+      "report_period": "2024Q3",
+      "assets": 1683474.52,
+      "liab_plus_equity": 1546473.3900000001,
+      "diff": 137001.13,
+      "rel_error": 0.0814
+    },
+    {
+      "stock_code": "600535",
+      "stock_abbr": "天士力",
+      "report_period": "2025Q1",
+      "assets": 1499674.72,
+      "liab_plus_equity": 1438343.9700000002,
+      "diff": 61330.75,
+      "rel_error": 0.0409
+    },
+    {
+      "stock_code": "600976",
+      "stock_abbr": "健民集团",
+      "report_period": "2023Q3",
+      "assets": 391616.91,
+      "liab_plus_equity": 364070.88,
+      "diff": 27546.03,
+      "rel_error": 0.0703
+    },
+    {
+      "stock_code": "000790",
+      "stock_abbr": "华神科技",
+      "report_period": "2022FY",
+      "assets": 167705.84,
+      "liab_plus_equity": 173977.03,
+      "diff": -6271.19,
+      "rel_error": 0.036
+    },
+    {
+      "stock_code": "000790",
+      "stock_abbr": "华神科技",
+      "report_period": "2025HY",
+      "assets": 208707.47,
+      "liab_plus_equity": 216010.49,
+      "diff": -7303.02,
+      "rel_error": 0.0338
+    },
+    {
+      "stock_code": "002219",
+      "stock_abbr": "新里程",
+      "report_period": "2024HY",
+      "assets": 630429.22,
+      "liab_plus_equity": 731852.87,
+      "diff": -101423.65,
+      "rel_error": 0.1386
+    },
+    {
+      "stock_code": "002219",
+      "stock_abbr": "新里程",
+      "report_period": "2024FY",
+      "assets": 667719.22,
+      "liab_plus_equity": 986585.51,
+      "diff": -318866.29,
+      "rel_error": 0.3232
+    },
+    {
+      "stock_code": "002219",
+      "stock_abbr": "新里程",
+      "report_period": "2025HY",
+      "assets": 672710.35,
+      "liab_plus_equity": 682116.01,
+      "diff": -9405.66,
+      "rel_error": 0.0138
+    },
+    {
+      "stock_code": "002898",
+      "stock_abbr": "赛隆药业",
+      "report_period": "2024FY",
+      "assets": 80822.34,
+      "liab_plus_equity": 84482.78,
+      "diff": -3660.44,
+      "rel_error": 0.0433
+    },
+    {
+      "stock_code": "002275",
+      "stock_abbr": "桂林三金",
+      "report_period": "2023HY",
+      "assets": 385180.57,
+      "liab_plus_equity": 377656.06,
+      "diff": 7524.51,
+      "rel_error": 0.0195
+    },
+    {
+      "stock_code": "002275",
+      "stock_abbr": "桂林三金",
+      "report_period": "2023FY",
+      "assets": 417525.34,
+      "liab_plus_equity": 393604.43,
+      "diff": 23920.91,
+      "rel_error": 0.0573
+    },
+    {
+      "stock_code": "002275",
+      "stock_abbr": "桂林三金",
+      "report_period": "2024HY",
+      "assets": 415675.08,
+      "liab_plus_equity": 454034.83,
+      "diff": -38359.75,
+      "rel_error": 0.0845
+    },
+    {
+      "stock_code": "002275",
+      "stock_abbr": "桂林三金",
+      "report_period": "2024FY",
+      "assets": 462474.06,
+      "liab_plus_equity": 507436.14,
+      "diff": -44962.08,
+      "rel_error": 0.0886
+    },
+    {
+      "stock_code": "002275",
+      "stock_abbr": "桂林三金",
+      "report_period": "2025HY",
+      "assets": 464312.46,
+      "liab_plus_equity": 509041.26,
+      "diff": -44728.8,
+      "rel_error": 0.0879
+    },
+    {
+      "stock_code": "600351",
+      "stock_abbr": "亚宝药业",
+      "report_period": "2023Q1",
+      "assets": 421237.47,
+      "liab_plus_equity": 427951.57,
+      "diff": -6714.1,
+      "rel_error": 0.0157
+    },
+    {
+      "stock_code": "600351",
+      "stock_abbr": "亚宝药业",
+      "report_period": "2022FY",
+      "assets": 413106.71,
+      "liab_plus_equity": 418727.03,
+      "diff": -5620.32,
+      "rel_error": 0.0134
+    },
+    {
+      "stock_code": "600351",
+      "stock_abbr": "亚宝药业",
+      "report_period": "2023Q3",
+      "assets": 397176.9,
+      "liab_plus_equity": 406010.66,
+      "diff": -8833.76,
+      "rel_error": 0.0218
+    },
+    {
+      "stock_code": "600351",
+      "stock_abbr": "亚宝药业",
+      "report_period": "2023FY",
+      "assets": 391876.17,
+      "liab_plus_equity": 385363.67000000004,
+      "diff": 6512.5,
+      "rel_error": 0.0166
+    },
+    {
+      "stock_code": "600351",
+      "stock_abbr": "亚宝药业",
+      "report_period": "2024Q1",
+      "assets": 379711.07,
+      "liab_plus_equity": 396364.15,
+      "diff": -16653.08,
+      "rel_error": 0.042
+    },
+    {
+      "stock_code": "600351",
+      "stock_abbr": "亚宝药业",
+      "report_period": "2024HY",
+      "assets": 383360.36,
+      "liab_plus_equity": 375394.1,
+      "diff": 7966.26,
+      "rel_error": 0.0208
+    },
+    {
+      "stock_code": "600351",
+      "stock_abbr": "亚宝药业",
+      "report_period": "2024Q3",
+      "assets": 376811.89,
+      "liab_plus_equity": 392306.20999999996,
+      "diff": -15494.32,
+      "rel_error": 0.0395
+    },
+    {
+      "stock_code": "600351",
+      "stock_abbr": "亚宝药业",
+      "report_period": "2024FY",
+      "assets": 376805.43,
+      "liab_plus_equity": 387497.42,
+      "diff": -10691.99,
+      "rel_error": 0.0276
+    },
+    {
+      "stock_code": "600351",
+      "stock_abbr": "亚宝药业",
+      "report_period": "2025HY",
+      "assets": 377930.4,
+      "liab_plus_equity": 345358.56,
+      "diff": 32571.84,
+      "rel_error": 0.0862
+    },
+    {
+      "stock_code": "600594",
+      "stock_abbr": "益佰制药",
+      "report_period": "2023Q1",
+      "assets": 497045.35,
+      "liab_plus_equity": 486580.75,
+      "diff": 10464.6,
+      "rel_error": 0.0211
+    },
+    {
+      "stock_code": "600594",
+      "stock_abbr": "益佰制药",
+      "report_period": "2023Q3",
+      "assets": 490138.41,
+      "liab_plus_equity": 502737.91000000003,
+      "diff": -12599.5,
+      "rel_error": 0.0251
+    },
+    {
+      "stock_code": "002603",
+      "stock_abbr": "以岭药业",
+      "report_period": "2023Q3",
+      "assets": 1743500.38,
+      "liab_plus_equity": 1633611.27,
+      "diff": 109889.11,
+      "rel_error": 0.063
+    },
+    {
+      "stock_code": "002589",
+      "stock_abbr": "瑞康医药",
+      "report_period": "2022FY",
+      "assets": 2084394.03,
+      "liab_plus_equity": 1833107.46,
+      "diff": 251286.57,
+      "rel_error": 0.1206
+    },
+    {
+      "stock_code": "002589",
+      "stock_abbr": "瑞康医药",
+      "report_period": "2023HY",
+      "assets": 1965528.51,
+      "liab_plus_equity": 1828120.99,
+      "diff": 137407.52,
+      "rel_error": 0.0699
+    },
+    {
+      "stock_code": "002589",
+      "stock_abbr": "瑞康医药",
+      "report_period": "2024FY",
+      "assets": 1887211.24,
+      "liab_plus_equity": 1601232.0,
+      "diff": 285979.24,
+      "rel_error": 0.1515
+    },
+    {
+      "stock_code": "300878",
+      "stock_abbr": "维康药业",
+      "report_period": "2023FY",
+      "assets": 206796.37,
+      "liab_plus_equity": 204663.65,
+      "diff": 2132.72,
+      "rel_error": 0.0103
+    },
+    {
+      "stock_code": "300878",
+      "stock_abbr": "维康药业",
+      "report_period": "2024HY",
+      "assets": 189112.05,
+      "liab_plus_equity": 183843.0,
+      "diff": 5269.05,
+      "rel_error": 0.0279
+    },
+    {
+      "stock_code": "300878",
+      "stock_abbr": "维康药业",
+      "report_period": "2025HY",
+      "assets": 159714.15,
+      "liab_plus_equity": 154597.67,
+      "diff": 5116.48,
+      "rel_error": 0.032
+    },
+    {
+      "stock_code": "600085",
+      "stock_abbr": "同仁堂",
+      "report_period": "2023Q1",
+      "assets": 2791433.76,
+      "liab_plus_equity": 2714327.27,
+      "diff": 77106.49,
+      "rel_error": 0.0276
+    },
+    {
+      "stock_code": "600085",
+      "stock_abbr": "同仁堂",
+      "report_period": "2023Q3",
+      "assets": 2951223.73,
+      "liab_plus_equity": 2704449.19,
+      "diff": 246774.54,
+      "rel_error": 0.0836
+    },
+    {
+      "stock_code": "600422",
+      "stock_abbr": "昆药集团",
+      "report_period": "2023HY",
+      "assets": 943195.82,
+      "liab_plus_equity": 902572.91,
+      "diff": 40622.91,
+      "rel_error": 0.0431
+    },
+    {
+      "stock_code": "603567",
+      "stock_abbr": "珍宝岛",
+      "report_period": "2022FY",
+      "assets": 1167547.55,
+      "liab_plus_equity": 1180579.07,
+      "diff": -13031.52,
+      "rel_error": 0.011
+    },
+    {
+      "stock_code": "002566",
+      "stock_abbr": "益盛药业",
+      "report_period": "2022FY",
+      "assets": 308491.96,
+      "liab_plus_equity": 296660.67,
+      "diff": 11831.29,
+      "rel_error": 0.0384
+    },
+    {
+      "stock_code": "002566",
+      "stock_abbr": "益盛药业",
+      "report_period": "2023HY",
+      "assets": 314624.56,
+      "liab_plus_equity": 301280.63,
+      "diff": 13343.93,
+      "rel_error": 0.0424
+    },
+    {
+      "stock_code": "002566",
+      "stock_abbr": "益盛药业",
+      "report_period": "2023FY",
+      "assets": 321315.71,
+      "liab_plus_equity": 304672.24,
+      "diff": 16643.47,
+      "rel_error": 0.0518
+    },
+    {
+      "stock_code": "002566",
+      "stock_abbr": "益盛药业",
+      "report_period": "2024HY",
+      "assets": 307471.68,
+      "liab_plus_equity": 320039.15,
+      "diff": -12567.47,
+      "rel_error": 0.0393
+    },
+    {
+      "stock_code": "002566",
+      "stock_abbr": "益盛药业",
+      "report_period": "2025HY",
+      "assets": 306391.49,
+      "liab_plus_equity": 318952.53,
+      "diff": -12561.04,
+      "rel_error": 0.0394
+    },
+    {
+      "stock_code": "000989",
+      "stock_abbr": "九芝堂",
+      "report_period": "2025HY",
+      "assets": 1403392.78,
+      "liab_plus_equity": 1040263.86,
+      "diff": 363128.92,
+      "rel_error": 0.2588
+    },
+    {
+      "stock_code": "600436",
+      "stock_abbr": "片仔癀",
+      "report_period": "2024Q3",
+      "assets": 1798749.03,
+      "liab_plus_equity": 1640693.77,
+      "diff": 158055.26,
+      "rel_error": 0.0879
+    },
+    {
+      "stock_code": "600671",
+      "stock_abbr": "天目药业",
+      "report_period": "2023FY",
+      "assets": 34628.86,
+      "liab_plus_equity": 35395.86,
+      "diff": -767.0,
+      "rel_error": 0.0217
+    },
+    {
+      "stock_code": "002390",
+      "stock_abbr": "信邦制药",
+      "report_period": "2023FY",
+      "assets": 9244971150.19,
+      "liab_plus_equity": 2103591034.6899998,
+      "diff": 7141380115.5,
+      "rel_error": 0.7725
+    },
+    {
+      "stock_code": "301331",
+      "stock_abbr": "恩威医药",
+      "report_period": "2024Q3",
+      "assets": 142289.46,
+      "liab_plus_equity": 150411.63,
+      "diff": -8122.17,
+      "rel_error": 0.054
+    },
+    {
+      "stock_code": "000989",
+      "stock_abbr": "九 芝 堂",
+      "report_period": "2022FY",
+      "assets": 1384482.7,
+      "liab_plus_equity": 523841.56000000006,
+      "diff": 860641.14,
+      "rel_error": 0.6216
+    },
+    {
+      "stock_code": "000989",
+      "stock_abbr": "九 芝 堂",
+      "report_period": "2023HY",
+      "assets": 1407289.27,
+      "liab_plus_equity": 548841.13,
+      "diff": 858448.14,
+      "rel_error": 0.61
+    }
+  ],
+  "cross_table_consistency": [
+    {
+      "stock_code": "000538",
+      "stock_abbr": "云南白药",
+      "report_period": "2022FY",
+      "income_net_profit": 300112.59,
+      "core_net_profit": 91436.82,
+      "rel_error": 0.6953
+    },
+    {
+      "stock_code": "600332",
+      "stock_abbr": "白云山",
+      "report_period": "2024Q1",
+      "income_net_profit": 195.81,
+      "core_net_profit": 195811.8,
+      "rel_error": 0.999
+    },
+    {
+      "stock_code": "600572",
+      "stock_abbr": "康恩贝",
+      "report_period": "2023FY",
+      "income_net_profit": 59157.29,
+      "core_net_profit": 28420.97,
+      "rel_error": 0.5196
+    },
+    {
+      "stock_code": "600572",
+      "stock_abbr": "康恩贝",
+      "report_period": "2024Q1",
+      "income_net_profit": 22996.47,
+      "core_net_profit": 21606.3,
+      "rel_error": 0.0605
+    },
+    {
+      "stock_code": "600572",
+      "stock_abbr": "康恩贝",
+      "report_period": "2024FY",
+      "income_net_profit": 62241.7,
+      "core_net_profit": 21606.3,
+      "rel_error": 0.6529
+    },
+    {
+      "stock_code": "603139",
+      "stock_abbr": "康惠制药",
+      "report_period": "2023HY",
+      "income_net_profit": 892.79,
+      "core_net_profit": 1259.91,
+      "rel_error": 0.2914
+    },
+    {
+      "stock_code": "603139",
+      "stock_abbr": "康惠制药",
+      "report_period": "2023Q3",
+      "income_net_profit": 110.59,
+      "core_net_profit": 922.16,
+      "rel_error": 0.8801
+    },
+    {
+      "stock_code": "603139",
+      "stock_abbr": "康惠制药",
+      "report_period": "2023FY",
+      "income_net_profit": -5077.52,
+      "core_net_profit": 820.63,
+      "rel_error": 1.1616
+    },
+    {
+      "stock_code": "000650",
+      "stock_abbr": "仁和药业",
+      "report_period": "2023HY",
+      "income_net_profit": 42826.19,
+      "core_net_profit": 35654.89,
+      "rel_error": 0.1675
+    },
+    {
+      "stock_code": "000650",
+      "stock_abbr": "仁和药业",
+      "report_period": "2023FY",
+      "income_net_profit": 56725.75,
+      "core_net_profit": 18229.92,
+      "rel_error": 0.6786
+    },
+    {
+      "stock_code": "000650",
+      "stock_abbr": "仁和药业",
+      "report_period": "2024HY",
+      "income_net_profit": 41270.59,
+      "core_net_profit": 33717.57,
+      "rel_error": 0.183
+    },
+    {
+      "stock_code": "000650",
+      "stock_abbr": "仁和药业",
+      "report_period": "2024FY",
+      "income_net_profit": 48191.17,
+      "core_net_profit": 17729.65,
+      "rel_error": 0.6321
+    },
+    {
+      "stock_code": "000650",
+      "stock_abbr": "仁和药业",
+      "report_period": "2025HY",
+      "income_net_profit": 35524.09,
+      "core_net_profit": 29042.62,
+      "rel_error": 0.1825
+    },
+    {
+      "stock_code": "002198",
+      "stock_abbr": "嘉应制药",
+      "report_period": "2023FY",
+      "income_net_profit": 3432.02,
+      "core_net_profit": 1218.6,
+      "rel_error": 0.6449
+    },
+    {
+      "stock_code": "002728",
+      "stock_abbr": "特一药业",
+      "report_period": "2022FY",
+      "income_net_profit": 17820.41,
+      "core_net_profit": 3630.34,
+      "rel_error": 0.7963
+    },
+    {
+      "stock_code": "002728",
+      "stock_abbr": "特一药业",
+      "report_period": "2023FY",
+      "income_net_profit": 25317.58,
+      "core_net_profit": 17820.41,
+      "rel_error": 0.2961
+    },
+    {
+      "stock_code": "002728",
+      "stock_abbr": "特一药业",
+      "report_period": "2024FY",
+      "income_net_profit": 2049.5,
+      "core_net_profit": 25317.58,
+      "rel_error": 0.919
+    },
+    {
+      "stock_code": "000766",
+      "stock_abbr": "通化金马",
+      "report_period": "2022FY",
+      "income_net_profit": 3015.13,
+      "core_net_profit": 1768.65,
+      "rel_error": 0.4134
+    },
+    {
+      "stock_code": "000766",
+      "stock_abbr": "通化金马",
+      "report_period": "2023FY",
+      "income_net_profit": 4393.37,
+      "core_net_profit": 2838.31,
+      "rel_error": 0.354
+    },
+    {
+      "stock_code": "000766",
+      "stock_abbr": "通化金马",
+      "report_period": "2024FY",
+      "income_net_profit": 5643.73,
+      "core_net_profit": 3251.36,
+      "rel_error": 0.4239
+    },
+    {
+      "stock_code": "300391",
+      "stock_abbr": "长药控股",
+      "report_period": "2022FY",
+      "income_net_profit": -2327.33,
+      "core_net_profit": 1464.59,
+      "rel_error": 1.6293
+    },
+    {
+      "stock_code": "300147",
+      "stock_abbr": "香雪制药",
+      "report_period": "2022FY",
+      "income_net_profit": -53315.85,
+      "core_net_profit": -23449.96,
+      "rel_error": 0.5602
+    },
+    {
+      "stock_code": "600557",
+      "stock_abbr": "康缘药业",
+      "report_period": "2024FY",
+      "income_net_profit": 38092.3,
+      "core_net_profit": 13533.41,
+      "rel_error": 0.6447
+    },
+    {
+      "stock_code": "600993",
+      "stock_abbr": "马应龙",
+      "report_period": "2023FY",
+      "income_net_profit": 44325.09,
+      "core_net_profit": 18760.58,
+      "rel_error": 0.5768
+    },
+    {
+      "stock_code": "600993",
+      "stock_abbr": "马应龙",
+      "report_period": "2024FY",
+      "income_net_profit": 45183.92,
+      "core_net_profit": 19766.59,
+      "rel_error": 0.5625
+    },
+    {
+      "stock_code": "000423",
+      "stock_abbr": "东阿阿胶",
+      "report_period": "2023HY",
+      "income_net_profit": 48994.43,
+      "core_net_profit": 53111.36,
+      "rel_error": 0.0775
+    },
+    {
+      "stock_code": "002107",
+      "stock_abbr": "沃华医药",
+      "report_period": "2022FY",
+      "income_net_profit": 8988.59,
+      "core_net_profit": 10738.59,
+      "rel_error": 0.163
+    },
+    {
+      "stock_code": "002107",
+      "stock_abbr": "沃华医药",
+      "report_period": "2023HY",
+      "income_net_profit": 2956.45,
+      "core_net_profit": 3720.4,
+      "rel_error": 0.2053
+    },
+    {
+      "stock_code": "002107",
+      "stock_abbr": "沃华医药",
+      "report_period": "2023FY",
+      "income_net_profit": 5876.71,
+      "core_net_profit": 2544.93,
+      "rel_error": 0.5669
+    },
+    {
+      "stock_code": "002737",
+      "stock_abbr": "葵花药业",
+      "report_period": "2023HY",
+      "income_net_profit": 67890.61,
+      "core_net_profit": 63815.97,
+      "rel_error": 0.06
+    },
+    {
+      "stock_code": "002737",
+      "stock_abbr": "葵花药业",
+      "report_period": "2023FY",
+      "income_net_profit": 111914.2,
+      "core_net_profit": 40613.51,
+      "rel_error": 0.6371
+    },
+    {
+      "stock_code": "002737",
+      "stock_abbr": "葵花药业",
+      "report_period": "2024FY",
+      "income_net_profit": 49204.54,
+      "core_net_profit": 25518.33,
+      "rel_error": 0.4814
+    },
+    {
+      "stock_code": "002424",
+      "stock_abbr": "贵州百灵",
+      "report_period": "2022FY",
+      "income_net_profit": 13819.75,
+      "core_net_profit": 6509.13,
+      "rel_error": 0.529
+    },
+    {
+      "stock_code": "300181",
+      "stock_abbr": "佐力药业",
+      "report_period": "2022FY",
+      "income_net_profit": 27300.67,
+      "core_net_profit": 6904.66,
+      "rel_error": 0.7471
+    },
+    {
+      "stock_code": "300181",
+      "stock_abbr": "佐力药业",
+      "report_period": "2024FY",
+      "income_net_profit": 50777.19,
+      "core_net_profit": 8629.18,
+      "rel_error": 0.8301
+    },
+    {
+      "stock_code": "600222",
+      "stock_abbr": "太龙药业",
+      "report_period": "2024FY",
+      "income_net_profit": 5052.53,
+      "core_net_profit": 2125.86,
+      "rel_error": 0.5792
+    },
+    {
+      "stock_code": "600222",
+      "stock_abbr": "太龙药业",
+      "report_period": "2025Q1",
+      "income_net_profit": 263.11,
+      "core_net_profit": 153.06,
+      "rel_error": 0.4183
+    },
+    {
+      "stock_code": "600479",
+      "stock_abbr": "千金药业",
+      "report_period": "2023Q3",
+      "income_net_profit": 23961.41,
+      "core_net_profit": 19690.82,
+      "rel_error": 0.1782
+    },
+    {
+      "stock_code": "600479",
+      "stock_abbr": "千金药业",
+      "report_period": "2025Q1",
+      "income_net_profit": 7231.9,
+      "core_net_profit": 5315.53,
+      "rel_error": 0.265
+    },
+    {
+      "stock_code": "600479",
+      "stock_abbr": "千金药业",
+      "report_period": "2025Q3",
+      "income_net_profit": 25823.29,
+      "core_net_profit": 18735.52,
+      "rel_error": 0.2745
+    },
+    {
+      "stock_code": "600750",
+      "stock_abbr": "江中药业",
+      "report_period": "2022FY",
+      "income_net_profit": 59605.87,
+      "core_net_profit": 18369.72,
+      "rel_error": 0.6918
+    },
+    {
+      "stock_code": "600750",
+      "stock_abbr": "江中药业",
+      "report_period": "2024FY",
+      "income_net_profit": 78819.26,
+      "core_net_profit": 26901.87,
+      "rel_error": 0.6587
+    },
+    {
+      "stock_code": "600750",
+      "stock_abbr": "江中药业",
+      "report_period": "2025Q3",
+      "income_net_profit": 74268.72,
+      "core_net_profit": 68345.0,
+      "rel_error": 0.0798
+    },
+    {
+      "stock_code": "603896",
+      "stock_abbr": "寿仙谷",
+      "report_period": "2023HY",
+      "income_net_profit": 9023.58,
+      "core_net_profit": 8201.65,
+      "rel_error": 0.0911
+    },
+    {
+      "stock_code": "603896",
+      "stock_abbr": "寿仙谷",
+      "report_period": "2024FY",
+      "income_net_profit": 17471.45,
+      "core_net_profit": 7713.02,
+      "rel_error": 0.5585
+    },
+    {
+      "stock_code": "002907",
+      "stock_abbr": "华森制药",
+      "report_period": "2023FY",
+      "income_net_profit": 3269.92,
+      "core_net_profit": 3010.05,
+      "rel_error": 0.0795
+    },
+    {
+      "stock_code": "002907",
+      "stock_abbr": "华森制药",
+      "report_period": "2024FY",
+      "income_net_profit": 7673.02,
+      "core_net_profit": 4035.13,
+      "rel_error": 0.4741
+    },
+    {
+      "stock_code": "300158",
+      "stock_abbr": "振东制药",
+      "report_period": "2022FY",
+      "income_net_profit": -5129.0,
+      "core_net_profit": -7603.45,
+      "rel_error": 0.3254
+    },
+    {
+      "stock_code": "300158",
+      "stock_abbr": "振东制药",
+      "report_period": "2023Q3",
+      "income_net_profit": -413.41,
+      "core_net_profit": -87.42,
+      "rel_error": 0.7885
+    },
+    {
+      "stock_code": "300158",
+      "stock_abbr": "振东制药",
+      "report_period": "2023HY",
+      "income_net_profit": 1220.93,
+      "core_net_profit": 1454.24,
+      "rel_error": 0.1604
+    },
+    {
+      "stock_code": "002349",
+      "stock_abbr": "精华制药",
+      "report_period": "2022FY",
+      "income_net_profit": 21223.29,
+      "core_net_profit": 6685.53,
+      "rel_error": 0.685
+    },
+    {
+      "stock_code": "002349",
+      "stock_abbr": "精华制药",
+      "report_period": "2023Q1",
+      "income_net_profit": 9904.13,
+      "core_net_profit": 8767.13,
+      "rel_error": 0.1148
+    },
+    {
+      "stock_code": "002349",
+      "stock_abbr": "精华制药",
+      "report_period": "2023HY",
+      "income_net_profit": 17356.49,
+      "core_net_profit": 15460.73,
+      "rel_error": 0.1092
+    },
+    {
+      "stock_code": "002349",
+      "stock_abbr": "精华制药",
+      "report_period": "2023FY",
+      "income_net_profit": 21223.29,
+      "core_net_profit": 8767.13,
+      "rel_error": 0.5869
+    },
+    {
+      "stock_code": "002349",
+      "stock_abbr": "精华制药",
+      "report_period": "2024FY",
+      "income_net_profit": 21265.15,
+      "core_net_profit": 7108.01,
+      "rel_error": 0.6657
+    },
+    {
+      "stock_code": "002349",
+      "stock_abbr": "精华制药",
+      "report_period": "2025Q1",
+      "income_net_profit": 7151.74,
+      "core_net_profit": 6221.97,
+      "rel_error": 0.13
+    },
+    {
+      "stock_code": "000989",
+      "stock_abbr": "九 芝 堂",
+      "report_period": "2023FY",
+      "income_net_profit": 29741.11,
+      "core_net_profit": 16184.88,
+      "rel_error": 0.4558
+    },
+    {
+      "stock_code": "600252",
+      "stock_abbr": "中恒集团",
+      "report_period": "2022FY",
+      "income_net_profit": 1238.97,
+      "core_net_profit": 8582.26,
+      "rel_error": 0.8556
+    },
+    {
+      "stock_code": "600252",
+      "stock_abbr": "中恒集团",
+      "report_period": "2023HY",
+      "income_net_profit": 2896.04,
+      "core_net_profit": 8825.75,
+      "rel_error": 0.6719
+    },
+    {
+      "stock_code": "600252",
+      "stock_abbr": "中恒集团",
+      "report_period": "2025Q1",
+      "income_net_profit": 543.4,
+      "core_net_profit": 1826.71,
+      "rel_error": 0.7025
+    },
+    {
+      "stock_code": "600252",
+      "stock_abbr": "中恒集团",
+      "report_period": "2025HY",
+      "income_net_profit": 769.84,
+      "core_net_profit": 2707.76,
+      "rel_error": 0.7157
+    },
+    {
+      "stock_code": "600252",
+      "stock_abbr": "中恒集团",
+      "report_period": "2025Q3",
+      "income_net_profit": -931.86,
+      "core_net_profit": 2464.04,
+      "rel_error": 1.3782
+    },
+    {
+      "stock_code": "600518",
+      "stock_abbr": "康美药业",
+      "report_period": "2023FY",
+      "income_net_profit": 10252.12,
+      "core_net_profit": -5040.86,
+      "rel_error": 1.4917
+    },
+    {
+      "stock_code": "600518",
+      "stock_abbr": "康美药业",
+      "report_period": "2024FY",
+      "income_net_profit": 857.37,
+      "core_net_profit": 747.13,
+      "rel_error": 0.1286
+    },
+    {
+      "stock_code": "600771",
+      "stock_abbr": "广誉远",
+      "report_period": "2023HY",
+      "income_net_profit": 901.67,
+      "core_net_profit": 1006.41,
+      "rel_error": 0.1041
+    },
+    {
+      "stock_code": "600771",
+      "stock_abbr": "广誉远",
+      "report_period": "2023FY",
+      "income_net_profit": 9285.12,
+      "core_net_profit": 2760.81,
+      "rel_error": 0.7027
+    },
+    {
+      "stock_code": "600771",
+      "stock_abbr": "广誉远",
+      "report_period": "2024Q1",
+      "income_net_profit": 4962.19,
+      "core_net_profit": 4130.36,
+      "rel_error": 0.1676
+    },
+    {
+      "stock_code": "600771",
+      "stock_abbr": "广誉远",
+      "report_period": "2024Q3",
+      "income_net_profit": 8032.73,
+      "core_net_profit": 7096.42,
+      "rel_error": 0.1166
+    },
+    {
+      "stock_code": "600771",
+      "stock_abbr": "广誉远",
+      "report_period": "2024FY",
+      "income_net_profit": 8360.09,
+      "core_net_profit": 4130.36,
+      "rel_error": 0.5059
+    },
+    {
+      "stock_code": "600771",
+      "stock_abbr": "广誉远",
+      "report_period": "2025Q1",
+      "income_net_profit": 0.01,
+      "core_net_profit": 6358.43,
+      "rel_error": 1.0
+    },
+    {
+      "stock_code": "600771",
+      "stock_abbr": "广誉远",
+      "report_period": "2025HY",
+      "income_net_profit": 6857.97,
+      "core_net_profit": 7685.71,
+      "rel_error": 0.1077
+    },
+    {
+      "stock_code": "603998",
+      "stock_abbr": "方盛制药",
+      "report_period": "2022FY",
+      "income_net_profit": 2.86,
+      "core_net_profit": 28585.15,
+      "rel_error": 0.9999
+    },
+    {
+      "stock_code": "603998",
+      "stock_abbr": "方盛制药",
+      "report_period": "2023FY",
+      "income_net_profit": 1.87,
+      "core_net_profit": 6378.68,
+      "rel_error": 0.9997
+    },
+    {
+      "stock_code": "000999",
+      "stock_abbr": "华润三九",
+      "report_period": "2022FY",
+      "income_net_profit": 244880.21,
+      "core_net_profit": 49646.59,
+      "rel_error": 0.7973
+    },
+    {
+      "stock_code": "000999",
+      "stock_abbr": "华润三九",
+      "report_period": "2023Q3",
+      "income_net_profit": 269517.91,
+      "core_net_profit": 240259.98,
+      "rel_error": 0.1086
+    },
+    {
+      "stock_code": "000999",
+      "stock_abbr": "华润三九",
+      "report_period": "2023FY",
+      "income_net_profit": 285293.17,
+      "core_net_profit": 52547.52,
+      "rel_error": 0.8158
+    },
+    {
+      "stock_code": "000999",
+      "stock_abbr": "华润三九",
+      "report_period": "2024FY",
+      "income_net_profit": 377774.13,
+      "core_net_profit": 136382.6,
+      "rel_error": 0.639
+    },
+    {
+      "stock_code": "002873",
+      "stock_abbr": "新天药业",
+      "report_period": "2023FY",
+      "income_net_profit": 8087.11,
+      "core_net_profit": 2509.23,
+      "rel_error": 0.6897
+    },
+    {
+      "stock_code": "002873",
+      "stock_abbr": "新天药业",
+      "report_period": "2025Q3",
+      "income_net_profit": 1618.09,
+      "core_net_profit": -0.01,
+      "rel_error": 1.0
+    },
+    {
+      "stock_code": "300026",
+      "stock_abbr": "红日药业",
+      "report_period": "2023FY",
+      "income_net_profit": 50663.14,
+      "core_net_profit": 17545.36,
+      "rel_error": 0.6537
+    },
+    {
+      "stock_code": "300147",
+      "stock_abbr": "香雪制药",
+      "report_period": "2023Q3",
+      "income_net_profit": -13189.11,
+      "core_net_profit": -14607.29,
+      "rel_error": 0.0971
+    },
+    {
+      "stock_code": "002864",
+      "stock_abbr": "盘龙药业",
+      "report_period": "2022FY",
+      "income_net_profit": 10116.35,
+      "core_net_profit": 3309.92,
+      "rel_error": 0.6728
+    },
+    {
+      "stock_code": "002864",
+      "stock_abbr": "盘龙药业",
+      "report_period": "2023FY",
+      "income_net_profit": 11043.22,
+      "core_net_profit": 2984.9,
+      "rel_error": 0.7297
+    },
+    {
+      "stock_code": "002864",
+      "stock_abbr": "盘龙药业",
+      "report_period": "2024FY",
+      "income_net_profit": 12027.16,
+      "core_net_profit": 2991.84,
+      "rel_error": 0.7512
+    },
+    {
+      "stock_code": "600535",
+      "stock_abbr": "天士力",
+      "report_period": "2023Q1",
+      "income_net_profit": 0.01,
+      "core_net_profit": 26607.83,
+      "rel_error": 1.0
+    },
+    {
+      "stock_code": "600535",
+      "stock_abbr": "天士力",
+      "report_period": "2024FY",
+      "income_net_profit": 85905.56,
+      "core_net_profit": 29521.12,
+      "rel_error": 0.6564
+    },
+    {
+      "stock_code": "002082",
+      "stock_abbr": "万邦德",
+      "report_period": "2023FY",
+      "income_net_profit": 4920.89,
+      "core_net_profit": -3855.28,
+      "rel_error": 1.7835
+    },
+    {
+      "stock_code": "002082",
+      "stock_abbr": "万邦德",
+      "report_period": "2024Q1",
+      "income_net_profit": 2495.84,
+      "core_net_profit": 2883.85,
+      "rel_error": 0.1345
+    },
+    {
+      "stock_code": "002082",
+      "stock_abbr": "万邦德",
+      "report_period": "2024Q3",
+      "income_net_profit": 3624.66,
+      "core_net_profit": 4570.6,
+      "rel_error": 0.207
+    },
+    {
+      "stock_code": "002082",
+      "stock_abbr": "万邦德",
+      "report_period": "2024FY",
+      "income_net_profit": 5544.1,
+      "core_net_profit": 2883.85,
+      "rel_error": 0.4798
+    },
+    {
+      "stock_code": "002082",
+      "stock_abbr": "万邦德",
+      "report_period": "2025Q3",
+      "income_net_profit": 128.46,
+      "core_net_profit": 446.78,
+      "rel_error": 0.7125
+    },
+    {
+      "stock_code": "000790",
+      "stock_abbr": "华神科技",
+      "report_period": "2024Q3",
+      "income_net_profit": 1526.57,
+      "core_net_profit": 573.79,
+      "rel_error": 0.6241
+    },
+    {
+      "stock_code": "000790",
+      "stock_abbr": "华神科技",
+      "report_period": "2024FY",
+      "income_net_profit": -669.02,
+      "core_net_profit": 227.98,
+      "rel_error": 1.3408
+    },
+    {
+      "stock_code": "002219",
+      "stock_abbr": "新里程",
+      "report_period": "2023HY",
+      "income_net_profit": 6053.7,
+      "core_net_profit": 5700.46,
+      "rel_error": 0.0584
+    },
+    {
+      "stock_code": "002219",
+      "stock_abbr": "新里程",
+      "report_period": "2023FY",
+      "income_net_profit": 3077.66,
+      "core_net_profit": 2157.42,
+      "rel_error": 0.299
+    },
+    {
+      "stock_code": "002219",
+      "stock_abbr": "新里程",
+      "report_period": "2024Q3",
+      "income_net_profit": 5649.14,
+      "core_net_profit": 5279.44,
+      "rel_error": 0.0654
+    },
+    {
+      "stock_code": "002166",
+      "stock_abbr": "莱茵生物",
+      "report_period": "2022FY",
+      "income_net_profit": 17874.54,
+      "core_net_profit": 4248.05,
+      "rel_error": 0.7623
+    },
+    {
+      "stock_code": "002166",
+      "stock_abbr": "莱茵生物",
+      "report_period": "2025HY",
+      "income_net_profit": 4367.24,
+      "core_net_profit": 3811.0,
+      "rel_error": 0.1274
+    },
+    {
+      "stock_code": "300391",
+      "stock_abbr": "长药控股",
+      "report_period": "2023HY",
+      "income_net_profit": -3760.45,
+      "core_net_profit": -2421.51,
+      "rel_error": 0.3561
+    },
+    {
+      "stock_code": "300147",
+      "stock_abbr": "香雪制药",
+      "report_period": "2023HY",
+      "income_net_profit": -5839.04,
+      "core_net_profit": -6599.33,
+      "rel_error": 0.1152
+    },
+    {
+      "stock_code": "002275",
+      "stock_abbr": "桂林三金",
+      "report_period": "2022FY",
+      "income_net_profit": 32952.65,
+      "core_net_profit": 12005.38,
+      "rel_error": 0.6357
+    },
+    {
+      "stock_code": "002275",
+      "stock_abbr": "桂林三金",
+      "report_period": "2023FY",
+      "income_net_profit": 42129.88,
+      "core_net_profit": 16922.51,
+      "rel_error": 0.5983
+    },
+    {
+      "stock_code": "002275",
+      "stock_abbr": "桂林三金",
+      "report_period": "2025Q3",
+      "income_net_profit": 38522.72,
+      "core_net_profit": 0.0,
+      "rel_error": 1.0
+    },
+    {
+      "stock_code": "600080",
+      "stock_abbr": "金花股份",
+      "report_period": "2024Q3",
+      "income_net_profit": 2130.73,
+      "core_net_profit": 3077.02,
+      "rel_error": 0.3075
+    },
+    {
+      "stock_code": "600080",
+      "stock_abbr": "金花股份",
+      "report_period": "2024FY",
+      "income_net_profit": 7461.13,
+      "core_net_profit": 2396.24,
+      "rel_error": 0.6788
+    },
+    {
+      "stock_code": "600351",
+      "stock_abbr": "亚宝药业",
+      "report_period": "2022FY",
+      "income_net_profit": 10465.51,
+      "core_net_profit": 7138.73,
+      "rel_error": 0.3179
+    },
+    {
+      "stock_code": "600351",
+      "stock_abbr": "亚宝药业",
+      "report_period": "2024FY",
+      "income_net_profit": 22391.55,
+      "core_net_profit": 24268.85,
+      "rel_error": 0.0774
+    },
+    {
+      "stock_code": "600594",
+      "stock_abbr": "益佰制药",
+      "report_period": "2023FY",
+      "income_net_profit": 9135.71,
+      "core_net_profit": 4399.99,
+      "rel_error": 0.5184
+    },
+    {
+      "stock_code": "603439",
+      "stock_abbr": "贵州三力",
+      "report_period": "2022FY",
+      "income_net_profit": 19193.85,
+      "core_net_profit": 15228.26,
+      "rel_error": 0.2066
+    },
+    {
+      "stock_code": "603439",
+      "stock_abbr": "贵州三力",
+      "report_period": "2024FY",
+      "income_net_profit": 29486.96,
+      "core_net_profit": 27402.78,
+      "rel_error": 0.0707
+    },
+    {
+      "stock_code": "002603",
+      "stock_abbr": "以岭药业",
+      "report_period": "2023FY",
+      "income_net_profit": 135237.92,
+      "core_net_profit": 120251.44,
+      "rel_error": 0.1108
+    },
+    {
+      "stock_code": "002603",
+      "stock_abbr": "以岭药业",
+      "report_period": "2024FY",
+      "income_net_profit": -72451.56,
+      "core_net_profit": 30392.79,
+      "rel_error": 1.4195
+    },
+    {
+      "stock_code": "002773",
+      "stock_abbr": "康弘药业",
+      "report_period": "2022FY",
+      "income_net_profit": 89667.0,
+      "core_net_profit": 29724.02,
+      "rel_error": 0.6685
+    },
+    {
+      "stock_code": "002773",
+      "stock_abbr": "康弘药业",
+      "report_period": "2023Q3",
+      "income_net_profit": 82536.14,
+      "core_net_profit": 825361369.22,
+      "rel_error": 0.9999
+    },
+    {
+      "stock_code": "002773",
+      "stock_abbr": "康弘药业",
+      "report_period": "2024Q1",
+      "income_net_profit": 37352.15,
+      "core_net_profit": 373521473.06,
+      "rel_error": 0.9999
+    },
+    {
+      "stock_code": "002773",
+      "stock_abbr": "康弘药业",
+      "report_period": "2024Q3",
+      "income_net_profit": 97371.16,
+      "core_net_profit": 973711578.04,
+      "rel_error": 0.9999
+    },
+    {
+      "stock_code": "002773",
+      "stock_abbr": "康弘药业",
+      "report_period": "2024FY",
+      "income_net_profit": 119123.08,
+      "core_net_profit": 37352.15,
+      "rel_error": 0.6864
+    },
+    {
+      "stock_code": "002773",
+      "stock_abbr": "康弘药业",
+      "report_period": "2025Q1",
+      "income_net_profit": 40001.77,
+      "core_net_profit": 400017678.69,
+      "rel_error": 0.9999
+    },
+    {
+      "stock_code": "002773",
+      "stock_abbr": "康弘药业",
+      "report_period": "2025Q3",
+      "income_net_profit": 103290.66,
+      "core_net_profit": 1032906564.53,
+      "rel_error": 0.9999
+    },
+    {
+      "stock_code": "002589",
+      "stock_abbr": "瑞康医药",
+      "report_period": "2024Q1",
+      "income_net_profit": 1857.11,
+      "core_net_profit": 1516.9,
+      "rel_error": 0.1832
+    },
+    {
+      "stock_code": "002589",
+      "stock_abbr": "瑞康医药",
+      "report_period": "2024Q3",
+      "income_net_profit": 5224.9,
+      "core_net_profit": 3880.63,
+      "rel_error": 0.2573
+    },
+    {
+      "stock_code": "002589",
+      "stock_abbr": "瑞康医药",
+      "report_period": "2024FY",
+      "income_net_profit": 2062.16,
+      "core_net_profit": -1818.47,
+      "rel_error": 1.8818
+    },
+    {
+      "stock_code": "002589",
+      "stock_abbr": "瑞康医药",
+      "report_period": "2025Q1",
+      "income_net_profit": 1943.54,
+      "core_net_profit": 1417.11,
+      "rel_error": 0.2709
+    },
+    {
+      "stock_code": "600566",
+      "stock_abbr": "济川药业",
+      "report_period": "2024FY",
+      "income_net_profit": 253155.41,
+      "core_net_profit": 84526.65,
+      "rel_error": 0.6661
+    },
+    {
+      "stock_code": "300878",
+      "stock_abbr": "维康药业",
+      "report_period": "2022FY",
+      "income_net_profit": 4444.43,
+      "core_net_profit": -4948.67,
+      "rel_error": 1.8981
+    },
+    {
+      "stock_code": "600085",
+      "stock_abbr": "同仁堂",
+      "report_period": "2022FY",
+      "income_net_profit": 219939.08,
+      "core_net_profit": 142581.17,
+      "rel_error": 0.3517
+    },
+    {
+      "stock_code": "600085",
+      "stock_abbr": "同仁堂",
+      "report_period": "2023FY",
+      "income_net_profit": 166883.45,
+      "core_net_profit": 52335.56,
+      "rel_error": 0.6864
+    },
+    {
+      "stock_code": "600085",
+      "stock_abbr": "同仁堂",
+      "report_period": "2024Q1",
+      "income_net_profit": 86253.37,
+      "core_net_profit": 57587.76,
+      "rel_error": 0.3323
+    },
+    {
+      "stock_code": "600085",
+      "stock_abbr": "同仁堂",
+      "report_period": "2024FY",
+      "income_net_profit": 152627.49,
+      "core_net_profit": 57587.76,
+      "rel_error": 0.6227
+    },
+    {
+      "stock_code": "600613",
+      "stock_abbr": "神奇制药",
+      "report_period": "2022FY",
+      "income_net_profit": 4800.95,
+      "core_net_profit": 2346.51,
+      "rel_error": 0.5112
+    },
+    {
+      "stock_code": "600613",
+      "stock_abbr": "神奇制药",
+      "report_period": "2023FY",
+      "income_net_profit": 5825.92,
+      "core_net_profit": 2379.08,
+      "rel_error": 0.5916
+    },
+    {
+      "stock_code": "600613",
+      "stock_abbr": "神奇制药",
+      "report_period": "2024FY",
+      "income_net_profit": 6607.81,
+      "core_net_profit": 2394.47,
+      "rel_error": 0.6376
+    },
+    {
+      "stock_code": "603567",
+      "stock_abbr": "珍宝岛",
+      "report_period": "2022FY",
+      "income_net_profit": 19088.02,
+      "core_net_profit": 33209.97,
+      "rel_error": 0.4252
+    },
+    {
+      "stock_code": "603567",
+      "stock_abbr": "珍宝岛",
+      "report_period": "2023FY",
+      "income_net_profit": 47274.0,
+      "core_net_profit": 25414.95,
+      "rel_error": 0.4624
+    },
+    {
+      "stock_code": "603567",
+      "stock_abbr": "珍宝岛",
+      "report_period": "2024FY",
+      "income_net_profit": 43821.62,
+      "core_net_profit": 29336.58,
+      "rel_error": 0.3305
+    },
+    {
+      "stock_code": "002317",
+      "stock_abbr": "众生药业",
+      "report_period": "2022FY",
+      "income_net_profit": 32205.03,
+      "core_net_profit": 4649.62,
+      "rel_error": 0.8556
+    },
+    {
+      "stock_code": "002317",
+      "stock_abbr": "众生药业",
+      "report_period": "2023FY",
+      "income_net_profit": 26327.32,
+      "core_net_profit": 13937.62,
+      "rel_error": 0.4706
+    },
+    {
+      "stock_code": "002317",
+      "stock_abbr": "众生药业",
+      "report_period": "2024Q3",
+      "income_net_profit": 13591.09,
+      "core_net_profit": 14880.24,
+      "rel_error": 0.0866
+    },
+    {
+      "stock_code": "002317",
+      "stock_abbr": "众生药业",
+      "report_period": "2024FY",
+      "income_net_profit": -29915.71,
+      "core_net_profit": 6139.26,
+      "rel_error": 1.2052
+    },
+    {
+      "stock_code": "300869",
+      "stock_abbr": "康泰医学",
+      "report_period": "2024FY",
+      "income_net_profit": -7790.26,
+      "core_net_profit": -8780.55,
+      "rel_error": 0.1128
+    },
+    {
+      "stock_code": "002566",
+      "stock_abbr": "益盛药业",
+      "report_period": "2022FY",
+      "income_net_profit": 8309.7,
+      "core_net_profit": 2722.96,
+      "rel_error": 0.6723
+    },
+    {
+      "stock_code": "002566",
+      "stock_abbr": "益盛药业",
+      "report_period": "2023HY",
+      "income_net_profit": 4996.51,
+      "core_net_profit": 4742.83,
+      "rel_error": 0.0508
+    },
+    {
+      "stock_code": "002566",
+      "stock_abbr": "益盛药业",
+      "report_period": "2023FY",
+      "income_net_profit": 9473.27,
+      "core_net_profit": 2870.26,
+      "rel_error": 0.697
+    },
+    {
+      "stock_code": "002566",
+      "stock_abbr": "益盛药业",
+      "report_period": "2024FY",
+      "income_net_profit": 5208.61,
+      "core_net_profit": 2101.64,
+      "rel_error": 0.5965
+    },
+    {
+      "stock_code": "000989",
+      "stock_abbr": "九芝堂",
+      "report_period": "2025Q3",
+      "income_net_profit": 16597.57,
+      "core_net_profit": 15153.16,
+      "rel_error": 0.087
+    },
+    {
+      "stock_code": "000989",
+      "stock_abbr": "九芝堂",
+      "report_period": "2025HY",
+      "income_net_profit": 20408.87,
+      "core_net_profit": 14377.36,
+      "rel_error": 0.2955
+    },
+    {
+      "stock_code": "002898",
+      "stock_abbr": "赛隆药业",
+      "report_period": "2023FY",
+      "income_net_profit": 953.37,
+      "core_net_profit": 319.74,
+      "rel_error": 0.6646
+    },
+    {
+      "stock_code": "300534",
+      "stock_abbr": "陇神戎发",
+      "report_period": "2022FY",
+      "income_net_profit": 2582.65,
+      "core_net_profit": 2037.77,
+      "rel_error": 0.211
+    },
+    {
+      "stock_code": "300534",
+      "stock_abbr": "陇神戎发",
+      "report_period": "2023HY",
+      "income_net_profit": 4548.16,
+      "core_net_profit": 3219.33,
+      "rel_error": 0.2922
+    },
+    {
+      "stock_code": "300534",
+      "stock_abbr": "陇神戎发",
+      "report_period": "2023FY",
+      "income_net_profit": 6164.77,
+      "core_net_profit": 1463.44,
+      "rel_error": 0.7626
+    },
+    {
+      "stock_code": "300534",
+      "stock_abbr": "陇神戎发",
+      "report_period": "2024Q1",
+      "income_net_profit": 3080.26,
+      "core_net_profit": 2214.1,
+      "rel_error": 0.2812
+    },
+    {
+      "stock_code": "300534",
+      "stock_abbr": "陇神戎发",
+      "report_period": "2024FY",
+      "income_net_profit": 2580.46,
+      "core_net_profit": 103.74,
+      "rel_error": 0.9598
+    },
+    {
+      "stock_code": "600129",
+      "stock_abbr": "太极集团",
+      "report_period": "2022FY",
+      "income_net_profit": 34970.28,
+      "core_net_profit": -52317.43,
+      "rel_error": 1.6684
+    },
+    {
+      "stock_code": "600129",
+      "stock_abbr": "太极集团",
+      "report_period": "2023FY",
+      "income_net_profit": 82212.49,
+      "core_net_profit": 33038.15,
+      "rel_error": 0.5981
+    },
+    {
+      "stock_code": "600129",
+      "stock_abbr": "太极集团",
+      "report_period": "2024FY",
+      "income_net_profit": 2665.27,
+      "core_net_profit": 24777.39,
+      "rel_error": 0.8924
+    },
+    {
+      "stock_code": "600436",
+      "stock_abbr": "片仔癀",
+      "report_period": "2022FY",
+      "income_net_profit": 0.0,
+      "core_net_profit": 247234.47,
+      "rel_error": 1.0
+    },
+    {
+      "stock_code": "600436",
+      "stock_abbr": "片仔癀",
+      "report_period": "2023Q3",
+      "income_net_profit": 222160.2,
+      "core_net_profit": 240464.84,
+      "rel_error": 0.0761
+    },
+    {
+      "stock_code": "600671",
+      "stock_abbr": "天目药业",
+      "report_period": "2023Q3",
+      "income_net_profit": -2745.8,
+      "core_net_profit": -403.7,
+      "rel_error": 0.853
+    },
+    {
+      "stock_code": "600671",
+      "stock_abbr": "天目药业",
+      "report_period": "2024FY",
+      "income_net_profit": 1524.58,
+      "core_net_profit": -972.28,
+      "rel_error": 1.6377
+    },
+    {
+      "stock_code": "600671",
+      "stock_abbr": "天目药业",
+      "report_period": "2025Q3",
+      "income_net_profit": 750.81,
+      "core_net_profit": 1420.88,
+      "rel_error": 0.4716
+    },
+    {
+      "stock_code": "603858",
+      "stock_abbr": "步长制药",
+      "report_period": "2023FY",
+      "income_net_profit": 31897.33,
+      "core_net_profit": 45526.9,
+      "rel_error": 0.2994
+    },
+    {
+      "stock_code": "603858",
+      "stock_abbr": "步长制药",
+      "report_period": "2024Q1",
+      "income_net_profit": 8769.89,
+      "core_net_profit": 11401.56,
+      "rel_error": 0.2308
+    },
+    {
+      "stock_code": "002390",
+      "stock_abbr": "信邦制药",
+      "report_period": "2022FY",
+      "income_net_profit": 22447.91,
+      "core_net_profit": 10953.24,
+      "rel_error": 0.5121
+    },
+    {
+      "stock_code": "002390",
+      "stock_abbr": "信邦制药",
+      "report_period": "2023Q1",
+      "income_net_profit": 6264.85,
+      "core_net_profit": 5294.48,
+      "rel_error": 0.1549
+    },
+    {
+      "stock_code": "002390",
+      "stock_abbr": "信邦制药",
+      "report_period": "2023FY",
+      "income_net_profit": 35377.25,
+      "core_net_profit": 28723.28,
+      "rel_error": 0.1881
+    },
+    {
+      "stock_code": "002390",
+      "stock_abbr": "信邦制药",
+      "report_period": "2024FY",
+      "income_net_profit": 10138.16,
+      "core_net_profit": 5882.48,
+      "rel_error": 0.4198
+    },
+    {
+      "stock_code": "002390",
+      "stock_abbr": "信邦制药",
+      "report_period": "2025Q3",
+      "income_net_profit": 20077.72,
+      "core_net_profit": 15232.5,
+      "rel_error": 0.2413
+    },
+    {
+      "stock_code": "301331",
+      "stock_abbr": "恩威医药",
+      "report_period": "2022FY",
+      "income_net_profit": 6780.13,
+      "core_net_profit": 9874.32,
+      "rel_error": 0.3134
+    },
+    {
+      "stock_code": "301331",
+      "stock_abbr": "恩威医药",
+      "report_period": "2024FY",
+      "income_net_profit": 3749.75,
+      "core_net_profit": 1547.56,
+      "rel_error": 0.5873
+    },
+    {
+      "stock_code": "301111",
+      "stock_abbr": "粤万年青",
+      "report_period": "2023FY",
+      "income_net_profit": 3350.17,
+      "core_net_profit": 1481.67,
+      "rel_error": 0.5577
+    },
+    {
+      "stock_code": "301111",
+      "stock_abbr": "粤万年青",
+      "report_period": "2024FY",
+      "income_net_profit": 123.77,
+      "core_net_profit": 336.56,
+      "rel_error": 0.6322
+    },
+    {
+      "stock_code": "000989",
+      "stock_abbr": "九 芝 堂",
+      "report_period": "2022FY",
+      "income_net_profit": 35935.17,
+      "core_net_profit": 12381.35,
+      "rel_error": 0.6555
+    },
+    {
+      "stock_code": "000590",
+      "stock_abbr": "启迪药业",
+      "report_period": "2022FY",
+      "income_net_profit": 1814.59,
+      "core_net_profit": 1250.19,
+      "rel_error": 0.311
+    }
+  ],
+  "missing_periods": [
+    {
+      "stock_code": "000423",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "000538",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "000590",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "000650",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "000766",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "000790",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "000989",
+      "report_period": "2024FY"
+    },
+    {
+      "stock_code": "000989",
+      "report_period": "2024HY"
+    },
+    {
+      "stock_code": "000989",
+      "report_period": "2024Q3"
+    },
+    {
+      "stock_code": "000989",
+      "report_period": "2025Q1"
+    },
+    {
+      "stock_code": "000989",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "000999",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "002082",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "002107",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "002166",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "002198",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "002219",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "002275",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "002287",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "002317",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "002349",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "002390",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "002424",
+      "report_period": "2024FY"
+    },
+    {
+      "stock_code": "002424",
+      "report_period": "2024HY"
+    },
+    {
+      "stock_code": "002424",
+      "report_period": "2024Q3"
+    },
+    {
+      "stock_code": "002424",
+      "report_period": "2025Q1"
+    },
+    {
+      "stock_code": "002424",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "002566",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "002589",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "002603",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "002728",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "002737",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "002773",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "002864",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "002873",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "002898",
+      "report_period": "2025HY"
+    },
+    {
+      "stock_code": "002898",
+      "report_period": "2025Q3"
+    },
+    {
+      "stock_code": "002898",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "002907",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "300026",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "300147",
+      "report_period": "2024FY"
+    },
+    {
+      "stock_code": "300147",
+      "report_period": "2025HY"
+    },
+    {
+      "stock_code": "300147",
+      "report_period": "2025Q1"
+    },
+    {
+      "stock_code": "300147",
+      "report_period": "2025Q3"
+    },
+    {
+      "stock_code": "300147",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "300158",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "300181",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "300391",
+      "report_period": "2025HY"
+    },
+    {
+      "stock_code": "300391",
+      "report_period": "2025Q1"
+    },
+    {
+      "stock_code": "300391",
+      "report_period": "2025Q3"
+    },
+    {
+      "stock_code": "300391",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "300519",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "300534",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "300869",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "301111",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "301331",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "600080",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "600085",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "600129",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "600222",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "600252",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "600285",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "600329",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "600332",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "600351",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "600422",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "600436",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "600479",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "600518",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "600535",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "600557",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "600566",
+      "report_period": "2023FY"
+    },
+    {
+      "stock_code": "600566",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "600572",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "600594",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "600613",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "600671",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "600750",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "600771",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "600976",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "600993",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "603139",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "603439",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "603567",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "603858",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "603896",
+      "report_period": "2022Q3"
+    },
+    {
+      "stock_code": "603998",
+      "report_period": "2022Q3"
+    }
+  ],
+  "yoy_outliers": [
+    {
+      "table": "core_performance_indicators_sheet",
+      "stock_code": "600332",
+      "stock_abbr": "白云山",
+      "report_period": "2025HY",
+      "revenue_yoy": 101829.0743,
+      "profit_yoy": -1.311
+    },
+    {
+      "table": "core_performance_indicators_sheet",
+      "stock_code": "603139",
+      "stock_abbr": "康惠制药",
+      "report_period": "2025Q1",
+      "revenue_yoy": -4.7217,
+      "profit_yoy": -1686.9741
+    },
+    {
+      "table": "core_performance_indicators_sheet",
+      "stock_code": "603139",
+      "stock_abbr": "康惠制药",
+      "report_period": "2024FY",
+      "revenue_yoy": -16.5426,
+      "profit_yoy": -1192.1548
+    },
+    {
+      "table": "core_performance_indicators_sheet",
+      "stock_code": "002728",
+      "stock_abbr": "特一药业",
+      "report_period": "2025HY",
+      "revenue_yoy": 56.5403,
+      "profit_yoy": 1313.2409
+    },
+    {
+      "table": "core_performance_indicators_sheet",
+      "stock_code": "300158",
+      "stock_abbr": "振东制药",
+      "report_period": "2024Q1",
+      "revenue_yoy": -17.7931,
+      "profit_yoy": 5952.9516
+    },
+    {
+      "table": "core_performance_indicators_sheet",
+      "stock_code": "300158",
+      "stock_abbr": "振东制药",
+      "report_period": "2024Q3",
+      "revenue_yoy": -18.4758,
+      "profit_yoy": 4689.7163
+    },
+    {
+      "table": "core_performance_indicators_sheet",
+      "stock_code": "300158",
+      "stock_abbr": "振东制药",
+      "report_period": "2024FY",
+      "revenue_yoy": -18.0608,
+      "profit_yoy": -2981.807
+    },
+    {
+      "table": "core_performance_indicators_sheet",
+      "stock_code": "000790",
+      "stock_abbr": "华神科技",
+      "report_period": "2025Q3",
+      "revenue_yoy": -31.0211,
+      "profit_yoy": -1804.2001
+    },
+    {
+      "table": "core_performance_indicators_sheet",
+      "stock_code": "002773",
+      "stock_abbr": "康弘药业",
+      "report_period": "2024Q1",
+      "revenue_yoy": 1234909.3728,
+      "profit_yoy": 1337100.2143
+    },
+    {
+      "table": "core_performance_indicators_sheet",
+      "stock_code": "300878",
+      "stock_abbr": "维康药业",
+      "report_period": "2024FY",
+      "revenue_yoy": -32.4126,
+      "profit_yoy": -1733.9798
+    },
+    {
+      "table": "income_sheet",
+      "stock_code": "600332",
+      "stock_abbr": "白云山",
+      "report_period": "2025Q1",
+      "revenue_yoy": -2.0605,
+      "profit_yoy": 92914.3149
+    },
+    {
+      "table": "income_sheet",
+      "stock_code": "603139",
+      "stock_abbr": "康惠制药",
+      "report_period": "2024Q3",
+      "revenue_yoy": -14.3326,
+      "profit_yoy": -3562.1937
+    },
+    {
+      "table": "income_sheet",
+      "stock_code": "603139",
+      "stock_abbr": "康惠制药",
+      "report_period": "2025Q1",
+      "revenue_yoy": -4.7217,
+      "profit_yoy": -1686.9741
+    },
+    {
+      "table": "income_sheet",
+      "stock_code": "002728",
+      "stock_abbr": "特一药业",
+      "report_period": "2025HY",
+      "revenue_yoy": 56.5403,
+      "profit_yoy": 1313.2409
+    },
+    {
+      "table": "income_sheet",
+      "stock_code": "300158",
+      "stock_abbr": "振东制药",
+      "report_period": "2024Q1",
+      "revenue_yoy": -17.7931,
+      "profit_yoy": 5952.9516
+    },
+    {
+      "table": "income_sheet",
+      "stock_code": "300158",
+      "stock_abbr": "振东制药",
+      "report_period": "2024Q3",
+      "revenue_yoy": -18.4758,
+      "profit_yoy": 1070.545
+    },
+    {
+      "table": "income_sheet",
+      "stock_code": "300158",
+      "stock_abbr": "振东制药",
+      "report_period": "2024FY",
+      "revenue_yoy": -18.0608,
+      "profit_yoy": -2930.5022
+    },
+    {
+      "table": "income_sheet",
+      "stock_code": "603998",
+      "stock_abbr": "方盛制药",
+      "report_period": "2024FY",
+      "revenue_yoy": -99.9295,
+      "profit_yoy": 1364692.5134
+    },
+    {
+      "table": "income_sheet",
+      "stock_code": "600535",
+      "stock_abbr": "天士力",
+      "report_period": "2024Q1",
+      "revenue_yoy": -1.5206,
+      "profit_yoy": 295211100.0
+    },
+    {
+      "table": "income_sheet",
+      "stock_code": "300878",
+      "stock_abbr": "维康药业",
+      "report_period": "2024FY",
+      "revenue_yoy": -32.4126,
+      "profit_yoy": -1733.9798
+    }
+  ]
+}
