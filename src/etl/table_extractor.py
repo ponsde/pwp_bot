@@ -224,6 +224,13 @@ _CONSOLIDATED_ONLY_FIELDS = frozenset({
     "total_operating_revenue",
     "net_cash_flow",
     "operating_cf_net_amount",
+    # net_profit: 附件3 schema says "最终盈利或亏损总额" = 合并净利润. The
+    # alias map has both "净利润" (3 chars, 合并) and "归属于母公司股东的净利润"
+    # (13 chars, 归母) → same field. Specificity guard lets longer label win,
+    # flipping 合并 → 归母 for companies with minority interests (白云山 2024Q3:
+    # 合并 328944.07 vs 归母 315897.70). Adding to consolidated-only requires
+    # ratio >= 1.0 so 归母 never overwrites the earlier-written 合并 value.
+    "net_profit",
 })
 
 
@@ -327,6 +334,13 @@ class TableExtractor:
             if header:
                 current_col_idx, previous_col_idx = self._match_statement_header_indices(header)
         pending_label = ""
+        # iter 4: same (field, label) repeating within ONE extracted table is a
+        # strong signal that pdfplumber merged 合并 and 母公司 sections into a single
+        # table (粤万年青 2024FY cash flow: both 合并 op_cf 3,208,543.56 and 母公司
+        # op_cf 3,777,956.34 appear as separate rows with identical label). For
+        # consolidated-only fields, trust the first write (assumed 合并, which PDFs
+        # render before 母公司) and skip duplicates unless the first write is garbage.
+        per_table_written: set[tuple[str, str]] = set()
         for row_idx, row in enumerate(rows):
             if header_row_idx is not None and row_idx <= header_row_idx:
                 continue
@@ -357,6 +371,13 @@ class TableExtractor:
                         label, field = strict, strict_field
             if not field:
                 continue
+            # iter 4: skip same-label repeats for consolidated-only fields unless the
+            # existing value is garbage (< 100 万 floor). Allows garbage escape while
+            # rejecting legitimate 母公司 values that follow 合并 in a merged table.
+            if field in _CONSOLIDATED_ONLY_FIELDS and (field, label) in per_table_written:
+                existing = target.get(field)
+                if existing is not None and abs(existing) >= _AGGREGATE_MAGNITUDE_FLOOR:
+                    continue
             value = self._select_statement_value(row, current_col_idx, previous_col_idx)
             if value is None:
                 pending_label = label
@@ -379,9 +400,11 @@ class TableExtractor:
                 if _should_overwrite_aggregate(target.get(field), converted, field=field):
                     target[field] = converted
                     label_specificity[field] = new_spec
+                    per_table_written.add((field, label))
             elif field not in target:
                 target[field] = converted
                 label_specificity[field] = new_spec
+                per_table_written.add((field, label))
 
     def _extract_core_metrics(
         self,
@@ -490,8 +513,21 @@ class TableExtractor:
         if core.get("net_asset_per_share") is None and balance.get("equity_total_equity") is not None and share_capital not in (None, 0):
             core["net_asset_per_share"] = round((balance["equity_total_equity"] * 10000) / share_capital, 4)
 
-        if balance.get("asset_total_assets") is not None and balance.get("liability_total_liabilities") is not None and balance.get("equity_total_equity") is None:
-            balance["equity_total_equity"] = round(balance["asset_total_assets"] - balance["liability_total_liabilities"], 2)
+        if balance.get("asset_total_assets") is not None and balance.get("liability_total_liabilities") is not None:
+            derived_equity = round(balance["asset_total_assets"] - balance["liability_total_liabilities"], 2)
+            captured_equity = balance.get("equity_total_equity")
+            if captured_equity is None:
+                balance["equity_total_equity"] = derived_equity
+            else:
+                # Captured 所有者权益合计 sometimes comes from a 母公司 section in
+                # multi-column layouts where 合并 and 母公司 balance sheets are
+                # interleaved (e.g. 恩威医药 2022FY). If the captured value violates
+                # Asset = Liabilities + Equity by more than 0.1% (with a 1 万元 floor),
+                # trust asset/liab and overwrite with the derivation — the accounting
+                # identity must hold in 合并 data.
+                tolerance = max(1.0, abs(derived_equity) * 0.001)
+                if abs(captured_equity - derived_equity) > tolerance:
+                    balance["equity_total_equity"] = derived_equity
 
         if core.get("roe") is None and core.get("net_profit_10k_yuan") is not None and balance.get("equity_total_equity") not in (None, 0):
             core["roe"] = round(core["net_profit_10k_yuan"] / balance["equity_total_equity"] * 100, 4)

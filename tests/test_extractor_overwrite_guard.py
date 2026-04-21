@@ -83,7 +83,13 @@ def test_consolidated_field_still_escapes_garbage_floor():
     assert owr(19.46, 1_643_027.0, field="asset_total_assets") is True
 
 
-def test_net_profit_stays_symmetric():
-    # net_profit is NOT in consolidated-only set (can legitimately be smaller when
-    # 归属于母公司 is preferred over 合并净利润)
-    assert owr(10_000.0, 5_000.0, field="net_profit") is True  # 0.5x within [0.3, 3.0]
+def test_net_profit_rejects_shrinking_write():
+    # 附件3 schema says income_sheet.net_profit = 合并净利润 (not 归母). When main
+    # 利润表 writes 合并 first, a later 归母 row (smaller by 少数股东损益) must not
+    # overwrite it. 白云山 2024Q3: 合并 328944 vs 归母 315897 (ratio 0.96) — the
+    # symmetric [0.3, 3.0] rule would incorrectly allow this overwrite.
+    # Consolidated-only [1.0, 3.0] rule rejects it, keeping 合并 correct.
+    assert owr(10_000.0, 5_000.0, field="net_profit") is False  # 0.5x, reject
+    assert owr(10_000.0, 9_600.0, field="net_profit") is False  # 0.96x (realistic 归母/合并)
+    # But larger values (合并 overwriting earlier 母公司 write) should still pass
+    assert owr(5_000.0, 10_000.0, field="net_profit") is True
