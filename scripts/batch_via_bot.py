@@ -171,6 +171,23 @@ def _extract_references(events: list[dict]) -> list[dict]:
     return out
 
 
+# 附件7 表3「图形格式」列枚举：柱状图 / 折线图 / 饼图 / 无
+_CHART_TYPE_ZH = {
+    "bar": "柱状图",
+    "line": "折线图",
+    "pie": "饼图",
+    "none": "无",
+    None: "无",
+    "": "无",
+}
+
+
+def _normalize_chart_type(ct: object) -> str:
+    if isinstance(ct, str) and ct in ("柱状图", "折线图", "饼图", "无"):
+        return ct
+    return _CHART_TYPE_ZH.get(ct, "无")
+
+
 def _extract_chart_info(events: list[dict]) -> tuple[str, list[str]]:
     chart_type = "无"
     images: list[str] = []
@@ -185,10 +202,10 @@ def _extract_chart_info(events: list[dict]) -> tuple[str, list[str]]:
         parsed = _parse_tool_result(events[i + 1])
         if not isinstance(parsed, dict):
             continue
-        ct = parsed.get("chart_type")
+        ct_zh = _normalize_chart_type(parsed.get("chart_type"))
         cu = parsed.get("chart_url")
-        if ct and ct != "无":
-            chart_type = ct
+        if ct_zh != "无":
+            chart_type = ct_zh
         if cu:
             images.append(str(cu))
     return chart_type, images

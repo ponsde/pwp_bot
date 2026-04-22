@@ -7,18 +7,18 @@
   },
   "embedding": {
     "dense": {
-      "api_base": "${LLM_API_BASE}",
-      "api_key": "${LLM_API_KEY}",
+      "api_base": "${OV_EMBEDDING_API_BASE}",
+      "api_key": "${OV_EMBEDDING_API_KEY}",
       "provider": "openai",
-      "dimension": 1024,
-      "model": "${EMBEDDING_MODEL}"
+      "dimension": ${OV_EMBEDDING_DIMENSION},
+      "model": "${OV_EMBEDDING_MODEL}"
     }
   },
   "vlm": {
-    "api_base": "${LLM_API_BASE}",
-    "api_key": "${LLM_API_KEY}",
+    "api_base": "${OV_VLM_API_BASE}",
+    "api_key": "${OV_VLM_API_KEY}",
     "provider": "openai",
-    "model": "${LLM_MODEL}"
+    "model": "${OV_VLM_MODEL}"
   },
   "bot": {
     "agents": {

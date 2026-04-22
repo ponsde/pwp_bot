@@ -142,12 +142,23 @@ def safe_chart_data(rows: Sequence[dict]) -> tuple[list[dict], str | None]:
 def select_chart_type(question: str, rows: Sequence[dict]) -> str:
     if len(rows) <= 1:
         return "none"
-    if any(token in question for token in ["趋势", "变化", "历年", "季度", "走势", "近几年"]):
-        return "line"
+    # Row-shape wins over question keywords: ranking-style rows (many distinct
+    # companies, one period) should always be bar, even when the follow-up
+    # question only mentions the period ("那2025年前三季度的呢" inherits top_n
+    # from an earlier turn so select_chart_type can't tell from text alone).
+    if rows and isinstance(rows[0], dict):
+        abbrs = {r.get("stock_abbr") for r in rows if r.get("stock_abbr")}
+        periods = {r.get("report_period") for r in rows if r.get("report_period")}
+        if len(abbrs) >= 3 and len(periods) <= 1:
+            return "bar"
+        if len(abbrs) <= 1 and len(periods) >= 3:
+            return "line"
     if any(token in question for token in ["占比", "构成", "份额", "比例"]):
         return "pie"
     if any(token in question for token in ["对比", "比较", "排名", "top", "绘图", "可视化", "画图", "图表"]):
         return "bar"
+    if any(token in question for token in ["趋势", "变化", "历年", "走势", "近几年"]):
+        return "line"
     if len(rows) > 1:
         return "bar"
     return "none"

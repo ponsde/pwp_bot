@@ -550,10 +550,10 @@ class Text2SQLEngine:
         if not intent.get("periods"):
             raise UserFacingError("同比查询缺少报告期。")
         current_period = intent["periods"][0]
-        match = re.fullmatch(r"(\d{4})FY", current_period)
+        match = re.fullmatch(r"(\d{4})(FY|Q1|HY|Q3)", current_period)
         if not match:
-            raise UserFacingError("当前仅支持年度同比（FY 对 FY）。")
-        previous_period = f"{int(match.group(1)) - 1}FY"
+            raise UserFacingError("同比报告期格式不支持，期待 2024FY / 2025Q1 / 2025HY / 2025Q3。")
+        previous_period = f"{int(match.group(1)) - 1}{match.group(2)}"
         if not fields:
             raise UserFacingError("同比查询缺少指标字段，请明确说明要查询的财务指标。")
         metric = fields[0]

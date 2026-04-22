@@ -14,7 +14,14 @@ class ConversationTurn:
 @dataclass
 class ConversationManager:
     history: List[ConversationTurn] = field(default_factory=list)
-    slots: dict = field(default_factory=lambda: {"companies": [], "fields": [], "periods": [], "tables": []})
+    slots: dict = field(default_factory=lambda: {
+        "companies": [],
+        "fields": [],
+        "periods": [],
+        "tables": [],
+        "top_n": None,
+        "order_direction": None,
+    })
 
     def add_user_message(self, content: str) -> None:
         self.history.append(ConversationTurn(role="user", content=content))
@@ -37,6 +44,15 @@ class ConversationManager:
                 merged[key] = current
             else:
                 merged[key] = list(self.slots.get(key, []))
+        # top_n / order_direction persist across turns: user rarely restates
+        # "top 5" when merely swapping periods ("那 2024Q3 的呢").
+        for key in ["top_n", "order_direction"]:
+            current = intent.get(key)
+            if current:
+                self.slots[key] = current
+                merged[key] = current
+            elif self.slots.get(key):
+                merged[key] = self.slots[key]
         merged["is_trend"] = bool(intent.get("is_trend", False))
         merged["yoy"] = bool(intent.get("yoy", False))
         return merged

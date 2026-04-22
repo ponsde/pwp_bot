@@ -31,14 +31,26 @@ DEFAULTS = {
     "REPO_ROOT": str(REPO_ROOT),
     "PYTHON_BIN": str(REPO_ROOT / ".venv" / "bin" / "python3"),
     "BOT_CHANNEL_API_KEY": "taidi-bot-key-2026",
+    "OV_EMBEDDING_DIMENSION": "1024",
 }
 
+# Core assistant LLM — drives bot agents + Text2SQL.
 REQUIRED_FROM_ENV = (
     "LLM_API_KEY",
     "LLM_API_BASE",
     "LLM_MODEL",
-    "EMBEDDING_MODEL",
     "SQLITE_DB_PATH",
+)
+
+# OpenViking's own embedding + VLM creds. If not separately set, fall back to
+# the assistant LLM's creds (single-provider local dev).
+OV_FALLBACKS = (
+    ("OV_EMBEDDING_API_KEY", "LLM_API_KEY"),
+    ("OV_EMBEDDING_API_BASE", "LLM_API_BASE"),
+    ("OV_EMBEDDING_MODEL", "EMBEDDING_MODEL"),
+    ("OV_VLM_API_KEY", "LLM_API_KEY"),
+    ("OV_VLM_API_BASE", "LLM_API_BASE"),
+    ("OV_VLM_MODEL", "LLM_MODEL"),
 )
 
 
@@ -62,9 +74,15 @@ def resolve(env_from_file: dict) -> dict:
     # .env values override defaults, real process env overrides .env
     for k, v in env_from_file.items():
         merged[k] = v
-    for k in list(merged) + list(REQUIRED_FROM_ENV):
+    ov_keys = [ov for ov, _ in OV_FALLBACKS]
+    for k in list(merged) + list(REQUIRED_FROM_ENV) + ov_keys:
         if k in os.environ:
             merged[k] = os.environ[k]
+    # OV_* → LLM_* fallback so single-provider local setups work without
+    # having to duplicate every key in .env.
+    for ov_key, llm_key in OV_FALLBACKS:
+        if not merged.get(ov_key) and merged.get(llm_key):
+            merged[ov_key] = merged[llm_key]
     sqlite_raw = merged.get("SQLITE_DB_PATH", "data/db/finance.db")
     sqlite_abs = str((REPO_ROOT / sqlite_raw).resolve()) if not os.path.isabs(sqlite_raw) else sqlite_raw
     merged["SQLITE_DB_PATH_ABS"] = sqlite_abs
@@ -109,10 +127,11 @@ def main() -> int:
 
     out_path.write_text(rendered, encoding="utf-8")
     print(f"Wrote {out_path}")
-    print(f"  LLM_MODEL     = {values['LLM_MODEL']}")
-    print(f"  LLM_API_BASE  = {values['LLM_API_BASE']}")
-    print(f"  EMBEDDING_MODEL = {values['EMBEDDING_MODEL']}")
-    print(f"  SQLITE_DB_PATH = {values['SQLITE_DB_PATH_ABS']}")
+    print(f"  LLM_MODEL          = {values['LLM_MODEL']}")
+    print(f"  LLM_API_BASE       = {values['LLM_API_BASE']}")
+    print(f"  OV_EMBEDDING_MODEL = {values.get('OV_EMBEDDING_MODEL', '(unset)')}")
+    print(f"  OV_VLM_MODEL       = {values.get('OV_VLM_MODEL', '(unset)')}")
+    print(f"  SQLITE_DB_PATH     = {values['SQLITE_DB_PATH_ABS']}")
     return 0
 
 
