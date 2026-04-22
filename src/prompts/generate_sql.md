@@ -7,7 +7,7 @@
 4. 优先使用 `stock_abbr = ?`、`report_period = ?` 这种可参数化条件思路。
 5. 趋势场景请输出 `report_period` 和目标字段，并按 `report_year, report_period` 排序。
 6. 不要使用 DELETE/UPDATE/INSERT/ATTACH/PRAGMA。
-7. 计算类问题请直接使用已有字段表达式，不要假设数据库存在现成比率/同比字段。
+7. 数据库**已经预算**了多个同比字段（列名以 `_yoy_growth` 结尾，如 `operating_revenue_yoy_growth`、`net_profit_yoy_growth`、`asset_total_assets_yoy_growth` 等）。当 intent 的 `fields` 里出现这些列时，直接 `SELECT` 即可，**不要**用 JOIN 当期 / 上年同期的办法重新算。其它派生比率（ROE 之类已经有的单列）同理，直接选列。不在 schema 里的派生指标才用表达式拼。
 
 完整 Schema：
 {schema_sql}
@@ -94,6 +94,22 @@ SELECT (
     WHERE stock_abbr = '华润三九' AND report_period = '2023FY'
 ) AS revenue_growth
 ;
+```
+
+12. 白云山2022年至2025年营业总收入同比增长率趋势
+```sql
+SELECT report_period, operating_revenue_yoy_growth
+FROM income_sheet
+WHERE stock_abbr = '白云山'
+ORDER BY report_year, report_period;
+```
+
+13. 华润三九近几年净利润同比增长率
+```sql
+SELECT report_period, net_profit_yoy_growth
+FROM income_sheet
+WHERE stock_abbr = '华润三九'
+ORDER BY report_year, report_period;
 ```
 
 查询解析结果：

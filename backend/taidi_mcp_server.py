@@ -82,7 +82,9 @@ def _render_chart(question: str, rows: list[dict]) -> tuple[str | None, str | No
     chart_data, _ = safe_chart_data(rows)
     if not chart_data:
         return None, None
-    chart_type = select_chart_type(question, chart_data)
+    # Pass the raw rows so row-shape heuristics can see stock_abbr / report_period;
+    # chart_data is pre-projected to {label, value} and loses those columns.
+    chart_type = select_chart_type(question, rows)
     if not chart_type or chart_type == "none":
         return None, chart_type
     import uuid as _uuid
