@@ -65,6 +65,7 @@ copy_file () {
 
 echo "applying bundled patches to $SITE ..."
 copy_file "vikingbot/agent/loop.py"
+copy_file "vikingbot/agent/tools/mcp.py"
 copy_file "vikingbot/bus/events.py"
 copy_file "vikingbot/channels/openapi.py"
 copy_file "vikingbot/channels/openapi_models.py"

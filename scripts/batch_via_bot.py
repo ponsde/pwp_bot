@@ -97,11 +97,11 @@ def _extract_sql(events: list[dict]) -> list[str]:
         if ev.get("type") != "tool_call":
             continue
         tool, args = _parse_tool_call(ev)
-        if tool == "mcp_fin_sql":
+        if tool == "MCP_fin_sql":
             sql = args.get("sql", "").strip()
             if sql:
                 sqls.append(sql)
-        elif tool == "mcp_fin_query":
+        elif tool == "MCP_fin_query":
             # Follow-up tool_result may contain a generated SQL.
             if i + 1 < len(events) and events[i + 1].get("type") == "tool_result":
                 parsed = _parse_tool_result(events[i + 1])
@@ -116,7 +116,7 @@ def _extract_references(events: list[dict]) -> list[dict]:
         if ev.get("type") != "tool_call":
             continue
         tool, args = _parse_tool_call(ev)
-        if tool not in {"openviking_search", "mcp_fin_query"}:
+        if tool not in {"openviking_search", "MCP_fin_query"}:
             continue
         if i + 1 >= len(events) or events[i + 1].get("type") != "tool_result":
             continue
@@ -178,7 +178,7 @@ def _extract_chart_info(events: list[dict]) -> tuple[str, list[str]]:
         if ev.get("type") != "tool_call":
             continue
         tool, _args = _parse_tool_call(ev)
-        if tool != "mcp_fin_query":
+        if tool != "MCP_fin_query":
             continue
         if i + 1 >= len(events) or events[i + 1].get("type") != "tool_result":
             continue
