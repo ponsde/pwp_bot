@@ -206,14 +206,32 @@ def _bot_run_question(gateway: str, api_key: str, item: dict, out_result_dir: Pa
     for turn_idx, turn in enumerate(turns, 1):
         q_text = turn["Q"]
         t0 = time.time()
-        try:
-            resp = _chat(gateway, api_key, session_id, q_text)
-            content = resp.get("message", "")
-            events = resp.get("events") or []
-        except Exception as exc:
-            print(f"[{qid}] turn {turn_idx} FAILED: {type(exc).__name__}: {str(exc)[:200]}", flush=True)
-            content = f"查询失败：{type(exc).__name__}: {str(exc)[:200]}"
-            events = []
+        content = ""
+        events = []
+        # Single retry if bot returns the vikingbot fallback "I've completed
+        # processing but have no response to give." This happens when the LLM
+        # returns empty content mid-loop (transient gpt-5.4 proxy hiccup or a
+        # complex multi-tool sequence that stalls). Retry with a fresh
+        # sub-session so history state is reset.
+        for attempt in range(2):
+            attempt_session = session_id if attempt == 0 else f"{qid}-retry-{uuid.uuid4().hex[:6]}"
+            try:
+                resp = _chat(gateway, api_key, attempt_session, q_text)
+                content = resp.get("message", "") or ""
+                events = resp.get("events") or []
+            except Exception as exc:
+                print(f"[{qid}] turn {turn_idx} attempt {attempt+1} FAILED: {type(exc).__name__}: {str(exc)[:200]}", flush=True)
+                content = f"查询失败：{type(exc).__name__}: {str(exc)[:200]}"
+                events = []
+            # Retry on empty-response and loop-abort fallbacks; HTTP errors and
+            # real clarifying content both count as a real outcome.
+            if (
+                "completed processing but have no response" not in content
+                and "Aborted: detected a tool-call loop" not in content
+            ):
+                break
+            if attempt == 0:
+                print(f"[{qid}] turn {turn_idx} empty response — retrying once", flush=True)
         elapsed = time.time() - t0
         turn_sql = _extract_sql(events)
         turn_refs = _extract_references(events)
