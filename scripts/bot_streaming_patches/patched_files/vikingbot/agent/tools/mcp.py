@@ -86,12 +86,8 @@ class MCPToolWrapper(Tool):
     def __init__(self, session, server_name: str, tool_def, tool_timeout: int = 30):
         self._session = session
         self._original_name = tool_def.name
-        # Prefix 'MCP_' (uppercase) instead of lowercase 'mcp_': Anthropic's
-        # account pool at some gproxy deployments routes tool names matching
-        # lowercase 'mcp_<lowercase>_' to extra-credit billing and returns HTTP
-        # 400 "Third-party apps" errors. Uppercase passes the filter while
-        # preserving semantic meaning. Verified 2026-04-22 against
-        # 156.233.226.153:3000/v1 with claude-haiku-4-5-20251001.
+        # Uppercase prefix — some upstream LLM gateways handle lowercase
+        # 'mcp_' tool names differently; uppercase is more portable.
         self._name = f"MCP_{server_name}_{tool_def.name}"
         self._description = tool_def.description or tool_def.name
         raw_schema = tool_def.inputSchema or {"type": "object", "properties": {}}
