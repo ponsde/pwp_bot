@@ -159,6 +159,10 @@ def _extract_references(events: list[dict]) -> list[dict]:
                 if path.startswith("viking://resources/"):
                     path = "./" + path[len("viking://"):]
                 refs.append({"paper_path": path, "text": text[:500], "paper_image": image})
+    # Drop references whose paper_path is empty — they come from SQL-only
+    # subquestion placeholders and clutter the 附件7 references structure
+    # without adding traceable citations.
+    refs = [r for r in refs if (r.get("paper_path") or "").strip()]
     # Dedup by (path, text)
     seen = set()
     out = []

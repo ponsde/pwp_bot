@@ -114,6 +114,11 @@ def test_run_etl_universal_reports_is_resilient_and_quality_clean(tmp_path: Path
 
 def test_loader_allows_incomplete_unknown_company_records(tmp_path: Path) -> None:
     loader = ETLLoader(tmp_path / "graceful.db")
+    # The test asserts graceful handling of sparse extraction, not allowlist
+    # bypass — the allowlist check (stock must be in 附件1) is a separate,
+    # intended gate. Inject the test stub stock so this test exercises the
+    # extraction/warnings branch rather than being filtered upstream.
+    loader.allowlist = set(loader.allowlist) | {"999999"}
 
     class DummyParser:
         def parse(self, pdf_path):
