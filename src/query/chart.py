@@ -87,11 +87,57 @@ def _configure_cjk_font(
 _configure_cjk_font()
 
 
+_VALUE_FIELD_PRIORITY_SUFFIXES = ("_yoy_growth", "_yoy", "_ratio", "_rate", "_margin", "_qoq_growth")
+
+
+def _pick_global_value_field(
+    rows: Sequence[dict],
+    label_field: str | None,
+) -> str | None:
+    """Pick a single value_field across all rows.
+
+    Rationale: picking per-row causes NULL cells to silently fall back to
+    another numeric column (e.g. yoy=NULL → revenue), which mixes quantities
+    on one axis and produces ghost "0.00万元" points on the chart. Fix is
+    one field globally; rows NULL in that field get skipped, not reassigned.
+
+    Preference order:
+      1. Columns whose name ends with a rate-like suffix (_yoy_growth, _ratio…)
+         — these are the semantically most interesting "chartable" metrics.
+      2. Among the remaining numeric columns, pick the one with most non-null
+         values across rows.
+      3. Ties fall back to SQL order (dict insertion order).
+    """
+    if not rows:
+        return None
+    candidate_coverage: dict[str, int] = {}
+    for row in rows:
+        for key, val in row.items():
+            if key == label_field:
+                continue
+            if isinstance(val, (int, float)) and not isinstance(val, bool):
+                candidate_coverage[key] = candidate_coverage.get(key, 0) + 1
+    if not candidate_coverage:
+        return None
+    priority_matches = [k for k in candidate_coverage if any(k.endswith(s) for s in _VALUE_FIELD_PRIORITY_SUFFIXES)]
+    if priority_matches:
+        # Among priority-suffix columns, pick the one with most non-null coverage.
+        return max(priority_matches, key=lambda k: (candidate_coverage[k], -list(candidate_coverage).index(k)))
+    # Otherwise pick whichever numeric column has broadest coverage; ties go to SQL order.
+    return max(candidate_coverage, key=lambda k: (candidate_coverage[k], -list(candidate_coverage).index(k)))
+
+
 def pick_chart_columns(
     row: dict,
     preferred_label_fields: Sequence[str] = ("stock_abbr", "report_period"),
+    value_field_override: str | None = None,
 ) -> tuple[str | None, object | None, str | None, str | None]:
-    """Intelligently select label and value columns from a result row for charting."""
+    """Intelligently select label and value columns from a result row for charting.
+
+    If ``value_field_override`` is provided, that column is used as-is and the
+    per-row fallback (to another numeric column) is suppressed — rows where the
+    chosen column is NULL return value=None so safe_chart_data can skip them.
+    """
     preferred_value_fields = ["yoy_ratio"]
 
     label_field = next((field for field in preferred_label_fields if field in row and row.get(field) not in (None, "")), None)
@@ -103,20 +149,27 @@ def pick_chart_columns(
         if label_field is None and row:
             label_field = next(iter(row.keys()))
 
-    value_field = next((field for field in preferred_value_fields if isinstance(row.get(field), (int, float))), None)
-    if value_field is None:
-        numeric_keys = [key for key, value in row.items() if isinstance(value, (int, float)) and key != label_field]
-        if numeric_keys:
-            value_field = numeric_keys[-1]
-        elif label_field and isinstance(row.get(label_field), (int, float)):
-            value_field = label_field
+    if value_field_override is not None:
+        value_field = value_field_override
+    else:
+        value_field = next((field for field in preferred_value_fields if isinstance(row.get(field), (int, float))), None)
+        if value_field is None:
+            numeric_keys = [key for key, value in row.items() if isinstance(value, (int, float)) and key != label_field]
+            if numeric_keys:
+                value_field = numeric_keys[-1]
+            elif label_field and isinstance(row.get(label_field), (int, float)):
+                value_field = label_field
 
     label = None
     if label_field and row.get(label_field) not in (None, ""):
         label_value = row.get(label_field)
         label = _format_report_period(label_value) if label_field == "report_period" else str(label_value)
-    value = row.get(value_field) if value_field else None
-    return label, value, label_field, value_field
+    raw_value = row.get(value_field) if value_field else None
+    # When override is set, NULL in that column must stay NULL so caller skips
+    # the row — do not silently substitute another numeric column.
+    if value_field_override is not None and not isinstance(raw_value, (int, float)):
+        raw_value = None
+    return label, raw_value, label_field, value_field
 
 
 def safe_chart_data(rows: Sequence[dict]) -> tuple[list[dict], str | None]:
@@ -136,10 +189,22 @@ def safe_chart_data(rows: Sequence[dict]) -> tuple[list[dict], str | None]:
         elif len(abbrs) >= 2 and len(periods) <= 1:
             preferred = ("stock_abbr", "report_period")
 
+    # Probe the label field from the first row to compute a global value_field
+    # that's used by every row — prevents NULL→fallback quantity mixing.
+    probe_label_field: str | None = None
+    if rows and isinstance(rows[0], dict):
+        probe_label_field = next(
+            (f for f in preferred if f in rows[0] and rows[0].get(f) not in (None, "")),
+            None,
+        )
+    global_value_field = _pick_global_value_field(rows, probe_label_field)
+
     data = []
     detected_value_field: str | None = None
     for row in rows:
-        label, value, _, value_field = pick_chart_columns(row, preferred)
+        label, value, _, value_field = pick_chart_columns(
+            row, preferred, value_field_override=global_value_field
+        )
         if value is None:
             continue
         if label is None:
