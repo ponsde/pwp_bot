@@ -195,7 +195,9 @@ def _extract_chart_info(events: list[dict]) -> tuple[str, list[str]]:
         if ev.get("type") != "tool_call":
             continue
         tool, _args = _parse_tool_call(ev)
-        if tool != "MCP_fin_query":
+        # Both fin_query and fin_sql can return chart_url (sql does so when
+        # the caller passed a question param — see taidi_mcp_server._execute_sql).
+        if tool not in ("MCP_fin_query", "MCP_fin_sql"):
             continue
         if i + 1 >= len(events) or events[i + 1].get("type") != "tool_result":
             continue

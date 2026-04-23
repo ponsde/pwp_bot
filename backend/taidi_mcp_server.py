@@ -203,8 +203,13 @@ def _list_tables() -> str:
     return "\n".join(lines)
 
 
-def _execute_sql(sql_text: str) -> str:
-    """Execute a raw SQL query and return results with source info."""
+def _execute_sql(sql_text: str, question: str = "") -> str:
+    """Execute a raw SQL query and return results with source info.
+
+    When ``question`` is supplied and the rows look chartable, try to render
+    a chart via the same server-side matplotlib path ``query()`` uses, so
+    fallback hand-written SQL still produces an image the UI can render.
+    """
     import re
     with sqlite3.connect(DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
@@ -214,9 +219,18 @@ def _execute_sql(sql_text: str) -> str:
     tables_used = re.findall(r'FROM\s+(\w+)', sql_text, re.IGNORECASE)
     tables_used += re.findall(r'JOIN\s+(\w+)', sql_text, re.IGNORECASE)
 
+    chart_url, chart_type = (None, None)
+    if rows:
+        try:
+            chart_url, chart_type = _render_chart(question or "", rows)
+        except Exception as exc:
+            logger.warning("_execute_sql chart render failed: %s", exc)
+
     result = {
         "rows": rows,
         "row_count": len(rows),
+        "chart_url": chart_url,
+        "chart_type": chart_type,
         "sources": [
             f"数据来源: {', '.join(set(tables_used))}" if tables_used else "直接SQL查询",
             f"SQL: {sql_text}",
@@ -276,19 +290,23 @@ def main():
             return f"Error: {exc}"
 
     @mcp.tool()
-    def sql(sql: str) -> str:
-        """直接执行 SQL 查询并返回结果。
+    def sql(sql: str, question: str = "") -> str:
+        """直接执行 SQL 查询并返回结果（JSON，含 rows/chart_url/chart_type）。
 
-        当 query_finance 工具不够灵活时，可以手写 SQL 查询。
-        数据库是 SQLite，四张表的字段信息可用 list_tables 查看。
+        当 MCP_fin_query 无法拿到数据时，用此工具手写 SELECT。
+        **如果用户要图**，同时把用户原话放到 `question` 参数里 —— 服务端
+        会用同一套 matplotlib（含中文字体）按数据形状自动画图，返回的
+        chart_url 可直接渲染，不要自己去 sandbox 画。
 
         Args:
-            sql: 要执行的 SQL 查询语句（只读，SELECT 语句）
+            sql: 要执行的 SQL 查询语句（只读，SELECT 开头）
+            question: 用户原始问题（可选）。传了且 rows 是可图表化的多期/多公司
+                数据时，返回值里会带 chart_url + chart_type。
         """
         if not sql.strip().upper().startswith("SELECT"):
             return "Error: 只允许 SELECT 查询"
         try:
-            return _execute_sql(sql)
+            return _execute_sql(sql, question=question)
         except Exception as exc:
             return f"SQL Error: {exc}"
 
