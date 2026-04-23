@@ -22,6 +22,7 @@ def _safe_chart_data(rows: list[dict]) -> tuple[list[dict], str | None]:
 
 def run_etl(input_dir: str, db_path: str) -> dict[str, object]:
     from src.etl.loader import ETLLoader
+    from src.etl.fill_yoy import fill_missing_yoy
     loader = ETLLoader(Path(db_path), pdf_dir=Path(input_dir))
     pdf_paths = sorted(Path(input_dir).rglob("*.pdf"))
     results = []
@@ -41,6 +42,13 @@ def run_etl(input_dir: str, db_path: str) -> dict[str, object]:
                     result["reason"] = "; ".join(warnings) if warnings else "validation_failed"
         results.append(result)
         logger.info("ETL %s | %s | %s", result.get("status"), result.get("file"), result.get("reason", ""))
+    # Post-pass: fill NULL *_yoy_growth cells where both current + prev-year
+    # base values exist. Never invents data; strictly arithmetic from the
+    # already-extracted rows.
+    yoy_summary = fill_missing_yoy(db_path)
+    total_filled = sum(yoy_summary.values())
+    if total_filled:
+        logger.info("ETL yoy-fill post-pass filled %d cell(s): %s", total_filled, yoy_summary)
     return {
         "status": "completed_with_errors" if any(r["status"] in {"error", "rejected"} for r in results) else "completed",
         "db_path": db_path,
@@ -50,6 +58,7 @@ def run_etl(input_dir: str, db_path: str) -> dict[str, object]:
         "skipped": sum(1 for r in results if r["status"] == "skipped"),
         "rejected": sum(1 for r in results if r["status"] == "rejected"),
         "error": sum(1 for r in results if r["status"] == "error"),
+        "yoy_fill": yoy_summary,
         "results": results,
     }
 
