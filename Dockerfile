@@ -67,6 +67,20 @@ export OPENVIKING_CONFIG_FILE=/root/.openviking/ov.conf
 export OPENAI_API_KEY="${LLM_API_KEY}"
 export OPENAI_API_BASE="${LLM_API_BASE}"
 
+# Start OpenViking HTTP server first — vikingbot's openviking_search /
+# memory tools hit http://127.0.0.1:18792; without it the agent loop
+# stalls trying unreachable tools and returns empty responses.
+openviking-server --host 127.0.0.1 --port 18792 --config /root/.openviking/ov.conf &
+
+# Wait for OV to accept connections before launching the bot
+for i in $(seq 1 60); do
+  if curl -s http://127.0.0.1:18792/ > /dev/null 2>&1; then
+    echo "openviking-server ready"
+    break
+  fi
+  sleep 1
+done
+
 # Start vikingbot gateway in background
 vikingbot gateway --port 18790 &
 
