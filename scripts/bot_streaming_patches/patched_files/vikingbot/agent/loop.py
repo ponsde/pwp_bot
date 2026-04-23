@@ -212,13 +212,22 @@ class AgentLoop:
         hook_manager.register_path(self.config.hooks)
 
     def _register_default_tools(self) -> None:
-        """Register default set of tools."""
+        """Register default set of tools.
+
+        taidi_bei: skip the built-in image-generation tool. It defaults to
+        doubao-seedream which isn't available on our gproxy channel pool, and
+        worse, the bot reaches for it when MCP chart generation returns empty
+        — producing external-service 503s that block a good answer. All
+        chart rendering must flow through MCP_fin_query which uses server-side
+        matplotlib with proper CJK fonts.
+        """
         register_default_tools(
             registry=self.tools,
             config=self.config,
             send_callback=self.bus.publish_outbound,
             subagent_manager=self.subagents,
             cron_service=self.cron_service,
+            include_image_tool=False,
         )
 
     async def run(self) -> None:
