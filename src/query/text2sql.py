@@ -104,6 +104,16 @@ class Text2SQLEngine:
     def _fix_yoy_intent(self, question: str, intent: dict[str, Any]) -> dict[str, Any]:
         if intent.get("yoy"):
             return intent
+        # Don't flip yoy on trend queries — they should read the precomputed
+        # *_yoy_growth columns directly (matches seek_table.md rules 7/8).
+        if intent.get("is_trend"):
+            return intent
+        fields = [str(f) for f in (intent.get("fields") or [])]
+        if any(f.endswith("_yoy_growth") or f.endswith("_yoy") for f in fields):
+            return intent
+        # "环比" is QoQ, not YoY — don't let the "增减" prefix match trigger yoy.
+        if "环比" in question:
+            return intent
         if self._contains_yoy_keyword(question):
             return {**intent, "yoy": True}
         return intent

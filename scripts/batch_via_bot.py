@@ -215,6 +215,9 @@ def _bot_run_question(gateway: str, api_key: str, item: dict, out_result_dir: Pa
     qid = item["id"]
     turns = item["turns"]
     session_id = f"{qid}-{uuid.uuid4().hex[:6]}"
+    # Track Qs already committed to the live session so retries can rebuild
+    # multi-turn context on a fresh session without dropping earlier state.
+    committed_qs: list[str] = []
     per_turn_payloads: list[dict] = []
     all_sql: list[str] = []
     all_refs: list[dict] = []
@@ -225,15 +228,26 @@ def _bot_run_question(gateway: str, api_key: str, item: dict, out_result_dir: Pa
         t0 = time.time()
         content = ""
         events = []
+        succeeded = False
         # Single retry if bot returns the vikingbot fallback "I've completed
-        # processing but have no response to give." This happens when the LLM
-        # returns empty content mid-loop (transient gpt-5.4 proxy hiccup or a
-        # complex multi-tool sequence that stalls). Retry with a fresh
-        # sub-session so history state is reset.
+        # processing but have no response to give." (transient gpt-5.4 proxy
+        # hiccup or complex multi-tool sequence that stalls). Retry opens a
+        # fresh session and REPLAYS prior turns so multi-turn state isn't lost.
         for attempt in range(2):
-            attempt_session = session_id if attempt == 0 else f"{qid}-retry-{uuid.uuid4().hex[:6]}"
+            if attempt == 0:
+                target_session = session_id
+                replay_qs: list[str] = []
+            else:
+                target_session = f"{qid}-retry-{uuid.uuid4().hex[:6]}"
+                replay_qs = list(committed_qs)
+                if replay_qs:
+                    print(f"[{qid}] turn {turn_idx} retry — replaying {len(replay_qs)} prior turns into {target_session}", flush=True)
+                else:
+                    print(f"[{qid}] turn {turn_idx} retry — fresh session {target_session}", flush=True)
             try:
-                resp = _chat(gateway, api_key, attempt_session, q_text)
+                for prev_q in replay_qs:
+                    _chat(gateway, api_key, target_session, prev_q)
+                resp = _chat(gateway, api_key, target_session, q_text)
                 content = resp.get("message", "") or ""
                 events = resp.get("events") or []
             except Exception as exc:
@@ -242,13 +256,25 @@ def _bot_run_question(gateway: str, api_key: str, item: dict, out_result_dir: Pa
                 events = []
             # Retry on empty-response and loop-abort fallbacks; HTTP errors and
             # real clarifying content both count as a real outcome.
-            if (
-                "completed processing but have no response" not in content
-                and "Aborted: detected a tool-call loop" not in content
-            ):
+            is_stall = (
+                "completed processing but have no response" in content
+                or "Aborted: detected a tool-call loop" in content
+            )
+            if not is_stall:
+                # Commit this session as the live one so the next turn continues
+                # on the same history (prevents state fork after retry).
+                session_id = target_session
+                succeeded = True
                 break
             if attempt == 0:
                 print(f"[{qid}] turn {turn_idx} empty response — retrying once", flush=True)
+        # Normalize English fallback content so it doesn't leak into result xlsx.
+        if not succeeded:
+            if "completed processing but have no response" in content:
+                content = "查询失败：bot 未返回有效响应"
+            elif "Aborted: detected a tool-call loop" in content:
+                content = "查询失败：tool-call loop"
+        committed_qs.append(q_text)
         elapsed = time.time() - t0
         turn_sql = _extract_sql(events)
         turn_refs = _extract_references(events)
@@ -354,8 +380,8 @@ def main() -> None:
     parser.add_argument("--limit", type=int, default=0, help="Process only first N questions (debug)")
     parser.add_argument("--concurrency", type=int, default=1,
                         help="Dispatch N questions concurrently (each is an independent session). "
-                             "4-8 is typically the sweet spot: gateway is async, LLM backend supports "
-                             "concurrency up to its own cap, SQLite reads and MCP calls are safe in parallel.")
+                             "Default 1 (sequential) — concurrency >1 tends to trip the gateway on "
+                             "prolonged runs; use only for short debug sweeps.")
     args = parser.parse_args()
 
     questions_path = Path(args.questions)

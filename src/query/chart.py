@@ -87,9 +87,11 @@ def _configure_cjk_font(
 _configure_cjk_font()
 
 
-def pick_chart_columns(row: dict) -> tuple[str | None, object | None, str | None, str | None]:
+def pick_chart_columns(
+    row: dict,
+    preferred_label_fields: Sequence[str] = ("stock_abbr", "report_period"),
+) -> tuple[str | None, object | None, str | None, str | None]:
     """Intelligently select label and value columns from a result row for charting."""
-    preferred_label_fields = ["stock_abbr", "report_period"]
     preferred_value_fields = ["yoy_ratio"]
 
     label_field = next((field for field in preferred_label_fields if field in row and row.get(field) not in (None, "")), None)
@@ -122,10 +124,22 @@ def safe_chart_data(rows: Sequence[dict]) -> tuple[list[dict], str | None]:
 
     Returns (data, value_field) so callers can pass field context to render_chart.
     """
+    # Row-shape-aware label preference: a single company across many periods
+    # wants report_period on the x-axis; a single period across many companies
+    # wants stock_abbr.
+    preferred: tuple[str, ...] = ("stock_abbr", "report_period")
+    if rows and isinstance(rows[0], dict):
+        abbrs = {r.get("stock_abbr") for r in rows if r.get("stock_abbr")}
+        periods = {r.get("report_period") for r in rows if r.get("report_period")}
+        if len(periods) >= 2 and len(abbrs) <= 1:
+            preferred = ("report_period", "stock_abbr")
+        elif len(abbrs) >= 2 and len(periods) <= 1:
+            preferred = ("stock_abbr", "report_period")
+
     data = []
     detected_value_field: str | None = None
     for row in rows:
-        label, value, _, value_field = pick_chart_columns(row)
+        label, value, _, value_field = pick_chart_columns(row, preferred)
         if value is None:
             continue
         if label is None:

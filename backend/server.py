@@ -275,7 +275,9 @@ def _render_chart_for(
     chart_data, chart_vf = safe_chart_data(rows)
     if not chart_data:
         return None, None
-    chart_type = chart_type_hint or select_chart_type(question, chart_data)
+    # Pass raw rows so select_chart_type can see stock_abbr / report_period
+    # distribution — chart_data is projected to {label, value} and would lose it.
+    chart_type = chart_type_hint or select_chart_type(question, rows)
     if not chart_type or chart_type == "none":
         return None, chart_type
     CHART_DIR.mkdir(parents=True, exist_ok=True)

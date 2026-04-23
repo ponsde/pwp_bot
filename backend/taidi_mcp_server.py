@@ -79,7 +79,7 @@ def _render_chart(question: str, rows: list[dict]) -> tuple[str | None, str | No
     """Try to render a chart; return (chart_url, chart_type)."""
     from src.query.chart import render_chart, safe_chart_data, select_chart_type
 
-    chart_data, _ = safe_chart_data(rows)
+    chart_data, value_field = safe_chart_data(rows)
     if not chart_data:
         return None, None
     # Pass the raw rows so row-shape heuristics can see stock_abbr / report_period;
@@ -91,7 +91,7 @@ def _render_chart(question: str, rows: list[dict]) -> tuple[str | None, str | No
 
     request_id = _uuid.uuid4().hex[:8]
     output_path = f"result/mcp_{request_id}.jpg"
-    chart_url = render_chart(chart_type, chart_data, output_path, title=question)
+    chart_url = render_chart(chart_type, chart_data, output_path, title=question, value_field=value_field)
     if chart_url:
         chart_url = f"/charts/{Path(chart_url).name}"
     return chart_url, chart_type
@@ -125,6 +125,33 @@ def _answer_question(question: str) -> dict:
 
     # Text2SQLEngine path
     result = engine.query(question)
+
+    # Clarification / error must propagate up — otherwise the bot sees an empty
+    # rows list and concludes "未查询到符合条件的数据" when we should be asking
+    # the user to fill in missing slots. Mirrors backend/server.py:289-312.
+    if result.needs_clarification:
+        return {
+            "route": "sql",
+            "content": result.clarification_question or "请补充信息后重新提问。",
+            "sql": result.sql,
+            "rows": [],
+            "chart_url": None,
+            "chart_type": None,
+            "sources": [],
+            "needs_clarification": True,
+        }
+    if result.error:
+        return {
+            "route": "sql",
+            "content": result.error,
+            "sql": result.sql,
+            "rows": [],
+            "chart_url": None,
+            "chart_type": None,
+            "sources": [],
+            "error": result.error,
+        }
+
     rows = result.rows
     content = build_answer_content(question, rows, intent=result.intent)
     chart_url, chart_type = _render_chart(question, rows)
