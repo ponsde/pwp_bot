@@ -12,6 +12,35 @@ from vikingbot.utils.helpers import cal_str_tokens
 DeltaCallback = Callable[[str], Awaitable[None]]
 
 
+def _salvage_concatenated_tool_args(raw_args: str) -> dict[str, Any] | None:
+    """Best-effort recovery when the LLM concatenates two JSON objects.
+
+    Some models emit `{"a":1}{"b":2}` in one tool_call.arguments slot.
+    json.loads rejects that, and wrapping the whole string in
+    ``{"raw": raw_args}`` hides the format from the model — it sees
+    only "missing required X", repeats the same bad output, and the
+    loop detector aborts the session after 3 identical failures.
+
+    Split on ``}{`` boundaries, parse each piece, and return the last
+    dict (empirically the target-schema object is emitted second,
+    after any duplicated context object). Return None on any parse
+    failure so the caller can fall back to the opaque wrapper.
+    """
+    if "}{" not in raw_args:
+        return None
+    pieces = raw_args.replace("}{", "}\x00{").split("\x00")
+    parsed: list[dict[str, Any]] = []
+    for piece in pieces:
+        try:
+            obj = json.loads(piece)
+        except json.JSONDecodeError:
+            return None
+        if not isinstance(obj, dict):
+            return None
+        parsed.append(obj)
+    return parsed[-1] if parsed else None
+
+
 @dataclass
 class ToolCallRequest:
     """A tool call request from the LLM."""
@@ -187,7 +216,7 @@ async def consume_stream(
         try:
             args = json.loads(args_str) if args_str else {}
         except json.JSONDecodeError:
-            args = {"raw": args_str}
+            args = _salvage_concatenated_tool_args(args_str)
         if not isinstance(args, dict):
             args = {"raw": args_str}
         tool_calls.append(

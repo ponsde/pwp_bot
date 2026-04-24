@@ -1065,12 +1065,23 @@ def create_app() -> FastAPI:
         if assets.is_dir():
             app.mount("/assets", StaticFiles(directory=str(assets)), name="assets")
 
+        _DIST_ROOT = WEB_DIST_DIR.resolve()
+        _INDEX_HTML = _DIST_ROOT / "index.html"
+
         @app.get("/{full_path:path}")
         def spa_fallback(full_path: str) -> FileResponse:
-            candidate = WEB_DIST_DIR / full_path
-            if full_path and candidate.is_file():
-                return FileResponse(candidate)
-            return FileResponse(WEB_DIST_DIR / "index.html")
+            # Reject path traversal: resolve then confirm candidate stays
+            # inside the dist root. Without this, `/{full_path:path}` accepts
+            # "../../.." segments and FileResponse would leak arbitrary files.
+            if full_path:
+                candidate = (_DIST_ROOT / full_path).resolve()
+                try:
+                    candidate.relative_to(_DIST_ROOT)
+                except ValueError:
+                    return FileResponse(_INDEX_HTML)
+                if candidate.is_file():
+                    return FileResponse(candidate)
+            return FileResponse(_INDEX_HTML)
 
     return app
 

@@ -14,6 +14,7 @@ from vikingbot.providers.base import (
     LLMProvider,
     LLMResponse,
     ToolCallRequest,
+    _salvage_concatenated_tool_args,
     consume_stream,
 )
 from vikingbot.providers.registry import find_by_model, find_gateway
@@ -350,11 +351,12 @@ class LiteLLMProvider(LLMProvider):
                 tokens = cal_str_tokens(tc.function.name, text_type="en")
                 if isinstance(args, str):
                     raw_args = args
+                    tokens += cal_str_tokens(raw_args, text_type="mixed")
                     try:
-                        tokens += cal_str_tokens(raw_args, text_type="mixed")
                         args = json.loads(raw_args)
                     except json.JSONDecodeError:
-                        args = {"raw": raw_args}
+                        # See vikingbot.providers.base._salvage_concatenated_tool_args
+                        args = _salvage_concatenated_tool_args(raw_args)
                     if not isinstance(args, dict):
                         args = {"raw": raw_args}
 

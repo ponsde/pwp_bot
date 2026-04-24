@@ -18,6 +18,7 @@ from vikingbot.providers.base import (
     LLMProvider,
     LLMResponse,
     ToolCallRequest,
+    _salvage_concatenated_tool_args,
     consume_stream,
 )
 from vikingbot.utils.helpers import cal_str_tokens
@@ -290,11 +291,17 @@ class OpenAICompatibleProvider(LLMProvider):
                 tokens = cal_str_tokens(tc.function.name, text_type="en")
                 if isinstance(args, str):
                     raw_args = args
+                    tokens += cal_str_tokens(raw_args, text_type="mixed")
                     try:
-                        tokens += cal_str_tokens(raw_args, text_type="mixed")
                         args = json.loads(raw_args)
                     except json.JSONDecodeError:
-                        args = {"raw": raw_args}
+                        # LLM occasionally concatenates two JSON objects
+                        # (`{"a":1}{"b":2}`). json.loads rejects, but the
+                        # second object typically matches the target tool's
+                        # schema. Salvage before falling back to the opaque
+                        # {"raw": ...} wrapper, which hides the format from
+                        # the model and causes 3-in-a-row loop aborts.
+                        args = _salvage_concatenated_tool_args(raw_args)
                     if not isinstance(args, dict):
                         args = {"raw": raw_args}
 

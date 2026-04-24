@@ -299,12 +299,13 @@ def main():
         chart_url 可直接渲染，不要自己去 sandbox 画。
 
         Args:
-            sql: 要执行的 SQL 查询语句（只读，SELECT 开头）
+            sql: 要执行的只读查询语句（SELECT 或 WITH … SELECT 都可以）
             question: 用户原始问题（可选）。传了且 rows 是可图表化的多期/多公司
                 数据时，返回值里会带 chart_url + chart_type。
         """
-        if not sql.strip().upper().startswith("SELECT"):
-            return "Error: 只允许 SELECT 查询"
+        stripped = sql.strip().upper()
+        if not (stripped.startswith("SELECT") or stripped.startswith("WITH")):
+            return "Error: 只允许 SELECT 或 WITH 开头的只读查询"
         try:
             return _execute_sql(sql, question=question)
         except Exception as exc:

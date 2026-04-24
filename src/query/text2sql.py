@@ -29,7 +29,7 @@ FIELD_CATALOG = {
     table_name: [field.name for field in fields if field.name not in {"serial_number", "stock_code", "stock_abbr", "report_period", "report_year"}]
     for table_name, fields in load_schema_metadata().items()
 }
-SAFE_SELECT_RE = re.compile(r"^\s*select\s+", re.I)
+SAFE_SELECT_RE = re.compile(r"^\s*(select|with)\s+", re.I)
 FORBIDDEN_SQL_RE = re.compile(r"\b(insert|update|delete|drop|attach|pragma|alter|create|replace)\b", re.I)
 MAX_PROMPT_ROWS = 50
 YOY_KEYWORDS = ("同比", "同比增长", "同比下降", "增长率", "增减")
